@@ -46,6 +46,7 @@ for(const market of ['上市','上櫃']){
       if(inst.length<50)throw Error('法人有效筆數不足：'+inst.length);
       inst.forEach(x=>addInstitution(store,x));changed=true;
       store.markets[market].institutionDate=date;
+      if(market==='上市'&&!store.dealerRepair.verifiedDates.includes(date))store.dealerRepair.verifiedDates.push(date);
       console.log(market,'法人',inst.length);
     }catch(e){errors.push(market+'法人：'+e.message);console.error(errors.at(-1));}
   }catch(e){errors.push(market+'最新行情：'+e.message);store.markets[market]={...(store.markets[market]||{}),status:'error',error:e.message,checkedAt:new Date().toISOString()};console.error(errors.at(-1));}
@@ -69,6 +70,7 @@ if(fallbackDate){
    if(inst.length<50)throw Error('有效法人筆數不足：'+inst.length);
    for(const x of inst)addInstitution(store,x);
    store.markets['上市'].institutionDate=fallbackDate;
+   if(!store.dealerRepair.verifiedDates.includes(fallbackDate))store.dealerRepair.verifiedDates.push(fallbackDate);
    console.log('上市 日期指定法人',fallbackDate,inst.length);
   }catch(e){
    const message='上市 '+fallbackDate+' 法人日期指定補抓失敗：'+e.message;
