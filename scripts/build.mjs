@@ -41,23 +41,23 @@ export function summary(s){const d=derive(s);if(!d)return null;
 export async function buildOutput(store){
   const root=join(ROOT,'public','data');const detailDir=join(root,'stocks');
   await rm(detailDir,{recursive:true,force:true});await mkdir(detailDir,{recursive:true});
-  const rows=[];let ready=0,failed=0;
+  const rows=[];let ready=0,failed=0,maxDays=0,with20=0,with60=0;
   for(const s of Object.values(store.stocks)){
     if(!s.bars?.length)continue;
     try{
-      const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;
+      const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
       const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),warning:'買超日加權參考價並非外資、投信真實持股成本。'};
       await writeFile(join(detailDir,encodeURIComponent(s.code)+'.json'),JSON.stringify(detail));
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
   const output={version:'股_V0.6',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
-    rows,stats:{tracked:rows.length,yearlineReady:ready,analysisErrors:failed},
+    rows,stats:{tracked:rows.length,yearlineReady:ready,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
       {name:'櫃買中心三大法人',url:'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading'}],
-    backfill:{cursor:store.backfillCursor,complete:store.backfillComplete},
+    backfill:{cursor:store.backfillCursor,complete:store.backfillComplete,lastBatch:store.backfillLastBatch||null},
     errors:store.errors.slice(-12),
     message:ready===0?'目前尚無具備 MA240 的股票；請先完成歷史回補。':null};
   await writeFile(join(root,'index.json'),JSON.stringify(output));

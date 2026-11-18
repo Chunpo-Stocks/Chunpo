@@ -1,4 +1,4 @@
-// 股_V0.5 — pure parsing, indicators and pattern heuristics. No real-trade-price claims.
+// 股_V0.6.1 — pure parsing, indicators and pattern heuristics. No real-trade-price claims.
 export const SOURCES = Object.freeze({
   twsePrice:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL',
   tpexPrice:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
@@ -148,7 +148,10 @@ export function derive(stock){
   bullish(ma[20]!==null&&ma[60]!==null&&ma[20]>ma[60]&&last.c>ma[20],16,'站穩 MA20，且 MA20 > MA60');
   bearish(ma[20]!==null&&ma[60]!==null&&ma[20]<ma[60]&&last.c<ma[20],16,'跌破 MA20，且 MA20 < MA60');
   bullish(m.hist!==null&&m.hist>0,12,'MACD 柱狀值為正');bearish(m.hist!==null&&m.hist<0,12,'MACD 柱狀值為負');
-  bullish(r!==null&&r>52&&r<82,10,`RSI14 ${r.toFixed(1)} 偏強`);bearish(r!==null&&r<48&&r>18,10,`RSI14 ${r.toFixed(1)} 偏弱`);
+  if (Number.isFinite(r)) {
+    bullish(r>52&&r<82,10,`RSI14 ${r.toFixed(1)} 偏強`);
+    bearish(r<48&&r>18,10,`RSI14 ${r.toFixed(1)} 偏弱`);
+  }
   bullish(k.k!==null&&k.k>k.d,8,'KD K 值高於 D 值');bearish(k.k!==null&&k.k<k.d,8,'KD K 值低於 D 值');
   bullish(vr!==null&&vr>1.3&&prev!==undefined&&last.c>prev,10,'上漲且量比 > 1.3');bearish(vr!==null&&vr>1.3&&prev!==undefined&&last.c<prev,10,'下跌且量比 > 1.3');
   bullish(patterns.some(p=>p.side==='bull'),16,'符合多頭型態候選');bearish(patterns.some(p=>p.side==='bear'),16,'符合空頭型態候選');
