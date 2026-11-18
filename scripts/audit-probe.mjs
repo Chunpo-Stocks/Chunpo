@@ -20,7 +20,7 @@ for(const [name,url] of sources){
    first=rows[0]||null,table=tables.map(t=>({fields:t.fields||[],rows:t.data?.length??0})).filter(x=>x.fields.length);
   const info={source:name,type:Array.isArray(d)?'array':'object',rows:rows.length,objectKeys:!Array.isArray(d)?Object.keys(d).slice(0,25):undefined,
    stat:d?.stat??null,date:d?.date??null,columns:first?Object.keys(first).slice(0,40):null,
-   firstRowDate:first?(first.Date??first.TradingDate??null):null,tableHeaders:table.slice(0,5)};
+   firstRowDate:first?(first.Date??first.TradingDate??null):null,tableHeaders:table.slice(0,5),flatFields:Array.isArray(d?.fields)?d.fields:null,flatRows:Array.isArray(d?.data)?d.data.length:0};
   if(name==='tpexMargin')info.sample=first?Object.fromEntries(Object.entries(first).filter(([k])=>/Date|Margin|Short|Code/i.test(k)).slice(0,15)):null;
   if(name==='tpexInst')info.sample=first?Object.fromEntries(Object.entries(first).filter(([k])=>/Deal|Difference|Date/i.test(k)).slice(0,16)):null;
   if(name==='tx')info.sample=rows.filter(x=>String(x.Contract??'').toUpperCase()==='TX').slice(0,8).map(x=>({Date:x.Date,Contract:x.Contract,Month:x['ContractMonth(Week)']??x.ContractMonth,Session:x.TradingSession,Last:x.Last,Close:x.Close}));
