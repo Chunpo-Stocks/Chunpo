@@ -7,6 +7,7 @@ import {derive,institutionalWindows} from '../engine.mjs';
 import {fibonacci} from './market-engine.mjs';
 import {makeFlowRankings} from './flow-rank.mjs';
 import {createMorningPlan} from './morning-plan.mjs';
+import {listedDealerPendingDates} from './data-quality.mjs';
 
 export const ROOT=join(dirname(fileURLToPath(import.meta.url)),'..');
 export const STORE=join(ROOT,'store','history.json.gz');
@@ -71,8 +72,8 @@ export async function buildOutput(store){
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.8',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
-    rows,flowRankings:makeFlowRankings(store.stocks,store.markets),marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
+  const output={version:'股_V0.6.8.2',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+    rows,flowRankings:makeFlowRankings(store.stocks,store.markets),marketData:prepareMarketData(store.marketData),dataQuality:{dealerRepair:{verifiedTradingDays:store.dealerRepair?.verifiedDates?.length||0,pendingTradingDays:listedDealerPendingDates(store).length,repairedLastRun:store.dealerRepair?.lastRun||null},quarantinedUndatedTwseMargin:store.marketData?.quarantine?.twseMarginSummary?.length||0,governmentDealerData:'逐股官股券商買賣超尚無可驗證來源，未接入'},stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
@@ -82,7 +83,7 @@ export async function buildOutput(store){
       {name:'證交所加權指數',url:'https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST'},
       {name:'櫃買指數',url:'https://www.tpex.org.tw/openapi/v1/tpex_index'},
       {name:'台指期每日交易行情',url:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut'},
-      {name:'上市融資融券',url:'https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN'},
+      {name:'上市融資融券（指定日期）',url:'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN'},
       {name:'上櫃融資融券',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance'}],
     backfill:{cursor:store.backfillCursor,complete:store.backfillComplete,lastBatch:store.backfillLastBatch||null},
     chipsBackfill:{cursor:store.chipsBackfillCursor||null,lastBatch:store.chipsBackfillLastBatch||null},
