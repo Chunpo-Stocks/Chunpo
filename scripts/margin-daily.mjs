@@ -15,14 +15,14 @@ export function parseTwseMarginDaily(payload,requestedDate){
   // 官方個股融資融券表採重複欄名，不可用第一次「今日餘額」取代融券。
   // 先核對整體欄位結構，再依固定分區索引取值。
   const isDetails=fs.length>=14&&['代號','證券代號'].includes(fs[0])&&
-    fs[4]==='前日餘額'&&fs[5]==='今日餘額'&&
+    fs[5]==='前日餘額'&&fs[6]==='今日餘額'&&
     fs[11]==='前日餘額'&&fs[12]==='今日餘額';
   if(!isDetails)continue;
   for(const row of table.rows){
     if(!Array.isArray(row)||row.length<13)continue;
     const code=String(row[0]??'').trim();
     if(!ordinary(code))continue;
-    const margin=clean(row[5]),short=clean(row[12]),prevMargin=clean(row[4]),prevShort=clean(row[11]);
+    const margin=clean(row[6]),short=clean(row[12]),prevMargin=clean(row[5]),prevShort=clean(row[11]);
     if([margin,short,prevMargin,prevShort].some(x=>x===null))continue;
     out.push({code,d:date,market:'上市',margin,short,prevMargin,prevShort,
        dateConfirmed:true,unit:'官方原表單位',source:'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date='+date.replaceAll('-','')+'&selectType=ALL&response=json'});
