@@ -1,0 +1,23 @@
+name: V0.6.8 晨間計畫程式驗證
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/stock-v0.6.8-morning-plan]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 核對程式語法
+        run: |
+          node --check scripts/morning-plan.mjs
+          node --check scripts/build.mjs
+          node --check public/morning.js
+      - name: 執行所有資料與交易計畫測試
+        run: npm test
