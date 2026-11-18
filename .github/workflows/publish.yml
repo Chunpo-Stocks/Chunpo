@@ -1,15 +1,30 @@
-name: 股 V0.6 每日盤後更新與發布
+name: 股 V0.6.8 盤後更新與07:00交易計畫發布
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'public/index.html'
+      - 'public/morning.js'
+      - 'public/styles.css'
+      - 'public/sw.js'
+      - '.github/workflows/publish.yml'
   workflow_dispatch:
     inputs:
       backfill_days:
         description: '本次最多回補多少日曆天（0～120，首批建議 100）'
         required: true
-        default: '100'
+        default: '0'
+      chip_days:
+        description: '本次補回法人歷史交易日數（0～60）'
+        required: true
+        default: '0'
   schedule:
     # Asia/Taipei = UTC+8: 17:45 / 20:30, Monday-Friday.
     - cron: '45 9 * * 1-5'
     - cron: '30 12 * * 1-5'
+    # 台北時間週一至週五約06:40先建立07:00交易計畫；排程不保證準時。
+    - cron: '40 22 * * 0-4'
 permissions:
   contents: write
   pages: write
@@ -32,10 +47,11 @@ jobs:
           node-version: '22'
       - name: 執行資料規則測試
         run: npm test
-      - name: 向官方取數、更新中央歷史、重新產生靜態網頁資料
+      - name: 向官方取數、更新中央歷史、建立07:00條件式交易計畫
         env:
-          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '30' }}
-        run: node scripts/update.mjs --backfill-days="$BACKFILL_DAYS"
+          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '0' }}
+          CHIP_DAYS: ${{ github.event.inputs.chip_days || '0' }}
+        run: node scripts/update.mjs --backfill-days="$BACKFILL_DAYS" --chip-days="$CHIP_DAYS"
       - name: 保存唯一歷史資料庫（不把個股細節兩千個檔案每天重複提交）
         run: |
           git config user.name 'stock-data-bot'
