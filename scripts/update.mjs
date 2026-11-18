@@ -2,6 +2,7 @@
 import {loadStore,saveStore,addBar,addInstitution,buildOutput} from './build.mjs';
 import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst,parseTpexInstHistory,isoDate} from '../engine.mjs';
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';
+import {chooseTwseFallbackDate,validateTwseDaily} from './twse-fallback.mjs';
 import {planChipBackfill,recordChipResult} from './chip-planner.mjs';
 import {parseTwseIndex,parseTpexIndex,parseMargin,parseTxFutures,mergeDaily,summarizeMargin,parseTwseIndexMonth,parseTpexIndexMonth,mergeIndexMonth} from './market-engine.mjs';
 const nap=ms=>new Promise(r=>setTimeout(r,ms));
@@ -43,6 +44,35 @@ for(const market of ['上市','上櫃']){
     }catch(e){errors.push(market+'法人：'+e.message);console.error(errors.at(-1));}
   }catch(e){errors.push(market+'最新行情：'+e.message);store.markets[market]={...(store.markets[market]||{}),status:'error',error:e.message,checkedAt:new Date().toISOString()};console.error(errors.at(-1));}
   await nap(900);
+}
+// 若上市 OpenAPI 快照落後於櫃買已確認交易日，使用證交所指定日期資料保守補抓。
+const fallbackDate=chooseTwseFallbackDate(store.markets,todayTaipei());
+if(fallbackDate){
+ try{
+  const staleTwseDate=store.markets['上市']?.date||null;
+  const fallbackUrl=SOURCES.twseHistory.replace('{date}',fallbackDate.replaceAll('-',''));
+  const payload=await json(fallbackUrl,{tries:3});
+  const rows=validateTwseDaily(payload,fallbackDate);
+  for(const b of rows)addBar(store,b);
+  changed=true;
+  store.markets['上市']={date:fallbackDate,count:rows.length,status:'ok',source:fallbackUrl,checkedAt:new Date().toISOString(),retrieval:'日期指定官方盤後回補'};
+  console.log('上市 日期指定補抓成功',fallbackDate,rows.length,'檔；原快照日期',staleTwseDate);
+  const instUrl=SOURCES.twseInst.replace('{date}',fallbackDate.replaceAll('-',''));
+  try{
+   const instPayload=await json(instUrl,{tries:3}),inst=parseTwseInst(instPayload,fallbackDate);
+   if(inst.length<50)throw Error('有效法人筆數不足：'+inst.length);
+   for(const x of inst)addInstitution(store,x);
+   store.markets['上市'].institutionDate=fallbackDate;
+   console.log('上市 日期指定法人',fallbackDate,inst.length);
+  }catch(e){
+   const message='上市 '+fallbackDate+' 法人日期指定補抓失敗：'+e.message;
+   errors.push(message);console.warn('::warning::'+message);
+   delete store.markets['上市'].institutionDate; // 不能把昨天的法人日期留在今天
+  }
+ }catch(e){
+  const message='上市 '+fallbackDate+' 日期指定行情補抓未通過：'+e.message;
+  errors.push(message);console.warn('::warning::'+message);
+ }
 }
 // 市場大盤/OTC/台指期/融資券：官方免費盤後快照，僅每日累積，不假裝盤中即時。
 // 若任何一項失敗，保留先前的最後有效資料與來源日期；個股歷史庫不受影響。
