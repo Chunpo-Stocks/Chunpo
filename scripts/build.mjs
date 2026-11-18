@@ -4,6 +4,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {derive,institutionalWindows} from '../engine.mjs';
+import {fibonacci} from './market-engine.mjs';
 
 export const ROOT=join(dirname(fileURLToPath(import.meta.url)),'..');
 export const STORE=join(ROOT,'store','history.json.gz');
@@ -44,7 +45,16 @@ export function summary(s){const d=derive(s);if(!d)return null;
     foreignNet:latest?.foreign??null,trustNet:latest?.trust??null,institutionDate:latest?.d??null,
     foreignRef20:fix(chips.windows.find(x=>x.period===20)?.categories.foreign.netBuyCloseReference),trustRef20:fix(chips.windows.find(x=>x.period===20)?.categories.trust.netBuyCloseReference),
     foreignNet5:chips.windows.find(x=>x.period===5)?.categories.foreign.netShares??null,trustNet5:chips.windows.find(x=>x.period===5)?.categories.trust.netShares??null,
+    marginLatest:s.marginHistory?.at(-1)||null,
     source:s.bars.at(-1)?.source||null,ready:d.days>=250};
+}
+function prepareMarketData(data){
+ const d=data||{},idx=d.indices||{},margin=d.margin||{};
+ const slices=(rows)=>Array.isArray(rows)?rows.slice(-250):[];
+ const one=code=>{const bars=slices(idx[code]);return {code,bars,latest:bars.at(-1)||null,fib20:bars.length>=20?fibonacci(bars,20):null,fib60:bars.length>=60?fibonacci(bars,60):null,fib120:bars.length>=120?fibonacci(bars,120):null};};
+ return {indices:{taiex:one('taiex'),otc:one('otc')},
+  futures:d.futures?{...d.futures,snapshots:slices(d.futures.snapshots)}:null,
+  margin:{上市:slices(margin['上市']),上櫃:slices(margin['上櫃'])},sourceStatus:d.sourceStatus||{}};
 }
 export async function buildOutput(store){
   const root=join(ROOT,'public','data');const detailDir=join(root,'stocks');
@@ -54,19 +64,24 @@ export async function buildOutput(store){
     if(!s.bars?.length)continue;
     try{
       const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;if(r.scoreMode==='preliminary')preliminaryCount++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
-      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),chips:institutionalWindows(s),warning:'淨買超日加權收盤價不等於外資、投信或主力的真實持股成本。'};
+      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),chips:institutionalWindows(s),marginHistory:(s.marginHistory||[]).slice(-120),fibonacci:{short:fibonacci(s.bars,60),medium:fibonacci(s.bars,120)},warning:'淨買超日加權收盤價不等於外資、投信或主力的真實持股成本。'};
       await writeFile(join(detailDir,encodeURIComponent(s.code)+'.json'),JSON.stringify(detail));
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.3',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
-    rows,stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
+  const output={version:'股_V0.6.5',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+    rows,marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
       {name:'櫃買中心三大法人',url:'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading'},
       {name:'上市歷史法人買賣超（T86）',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
-      {name:'上櫃歷史法人買賣超（dailyTrade）',url:'https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade'}],
+      {name:'上櫃歷史法人買賣超（dailyTrade）',url:'https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade'},
+      {name:'證交所加權指數',url:'https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST'},
+      {name:'櫃買指數',url:'https://www.tpex.org.tw/openapi/v1/tpex_index'},
+      {name:'台指期每日交易行情',url:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut'},
+      {name:'上市融資融券',url:'https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN'},
+      {name:'上櫃融資融券',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance'}],
     backfill:{cursor:store.backfillCursor,complete:store.backfillComplete,lastBatch:store.backfillLastBatch||null},
     chipsBackfill:{cursor:store.chipsBackfillCursor||null,lastBatch:store.chipsBackfillLastBatch||null},
     errors:store.errors.slice(-12),
