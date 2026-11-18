@@ -12,20 +12,20 @@ export function parseTwseMarginDaily(payload,requestedDate){
  const out=[];
  for(const table of namedTables(payload)){
   const fs=table.fields.map(N);
-  const id=getIndex(fs,['證券代號','股票代號']);
-  const prevMargin=getIndex(fs,['融資前日餘額','前日餘額']);
-  const todayMargin=getIndex(fs,['融資今日餘額','今日餘額']);
-  const prevShort=fs.findIndex((f,i)=>i>todayMargin&&['融券前日餘額','前日餘額'].includes(f));
-  const todayShort=fs.findIndex((f,i)=>i>todayMargin&&['融券今日餘額','今日餘額'].includes(f));
-  if([id,prevMargin,todayMargin,prevShort,todayShort].some(i=>i<0))continue;
+  // 官方個股融資融券表採重複欄名，不可用第一次「今日餘額」取代融券。
+  // 先核對整體欄位結構，再依固定分區索引取值。
+  const isDetails=fs.length>=14&&['代號','證券代號'].includes(fs[0])&&
+    fs[4]==='前日餘額'&&fs[5]==='今日餘額'&&
+    fs[11]==='前日餘額'&&fs[12]==='今日餘額';
+  if(!isDetails)continue;
   for(const row of table.rows){
-   if(!Array.isArray(row))continue;
-   const code=String(row[id]??'').trim();
-   if(!ordinary(code))continue;
-   const m=clean(row[todayMargin]),s=clean(row[todayShort]),pm=clean(row[prevMargin]),ps=clean(row[prevShort]);
-   if([m,s,pm,ps].some(x=>x===null))continue;
-   out.push({code,d:date,market:'上市',margin:m,short:s,prevMargin:pm,prevShort:ps,
-      dateConfirmed:true,unit:'官方原表單位',source:'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date='+date.replaceAll('-','')+'&selectType=STOCK&response=json'});
+    if(!Array.isArray(row)||row.length<13)continue;
+    const code=String(row[0]??'').trim();
+    if(!ordinary(code))continue;
+    const margin=clean(row[5]),short=clean(row[12]),prevMargin=clean(row[4]),prevShort=clean(row[11]);
+    if([margin,short,prevMargin,prevShort].some(x=>x===null))continue;
+    out.push({code,d:date,market:'上市',margin,short,prevMargin,prevShort,
+       dateConfirmed:true,unit:'官方原表單位',source:'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date='+date.replaceAll('-','')+'&selectType=ALL&response=json'});
   }
  }
  if(out.length<500)throw Error('TWSE 指定日期融資券表未完整解析：'+out.length+' 筆（最低500筆）');
