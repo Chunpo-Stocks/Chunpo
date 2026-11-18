@@ -1,3 +1,4 @@
+// 股_V0.6.2 — 60日短期初步分析與250日完整年線分層。
 import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {join, dirname} from 'node:path';
@@ -29,9 +30,14 @@ const fix=n=>Number.isFinite(n)?Math.round(n*1e5)/1e5:null;
 export function summary(s){const d=derive(s);if(!d)return null;
   const institutions=s.institutions.filter(x=>x.d<=d.date).sort((a,b)=>b.d.localeCompare(a.d));
   const latest=institutions[0]||null;
+  // 年線訊號合計 28 分；當年線不足時只按其餘 72 分條件獨立正規化。
+  // 短期分數不與完整年線分數直接比較；每筆都有 scoreMode 與 days 標籤。
+  const complete=d.days>=250, preliminary=d.days>=60 && !complete;
+  const scoreMode=complete?'full':preliminary?'preliminary':'insufficient';
+  const score=side=> complete?d[side].score:preliminary?Math.min(100,Math.round(d[side].score/72*100)):null;
   return {code:s.code,name:s.name,market:s.market,date:d.date,close:d.close,pct:fix(d.pct),volume:d.volume,days:d.days,
-    bull:d.days>=250?d.bull.score:null,bear:d.days>=250?d.bear.score:null,
-    bullReasons:d.days>=250?d.bull.hits.map(x=>x.text):[],bearReasons:d.days>=250?d.bear.hits.map(x=>x.text):[],
+    bull:score('bull'),bear:score('bear'),scoreMode,
+    bullReasons:d.days>=60?d.bull.hits.map(x=>x.text):[],bearReasons:d.days>=60?d.bear.hits.map(x=>x.text):[],
     ma20:fix(d.ma[20]),ma60:fix(d.ma[60]),ma240:fix(d.ma[240]),yearSlope:fix(d.ma240slope),rsi:fix(d.rsi),volRatio:fix(d.volRatio),
     macdHist:fix(d.macd.hist),pattern:d.patterns.map(p=>({id:p.id,label:p.label,side:p.side,reason:p.reason})),
     foreignNet:latest?.foreign??null,trustNet:latest?.trust??null,institutionDate:latest?.d??null,
@@ -41,27 +47,27 @@ export function summary(s){const d=derive(s);if(!d)return null;
 export async function buildOutput(store){
   const root=join(ROOT,'public','data');const detailDir=join(root,'stocks');
   await rm(detailDir,{recursive:true,force:true});await mkdir(detailDir,{recursive:true});
-  const rows=[];let ready=0,failed=0,maxDays=0,with20=0,with60=0;
+  const rows=[];let ready=0,preliminaryCount=0,failed=0,maxDays=0,with20=0,with60=0;
   for(const s of Object.values(store.stocks)){
     if(!s.bars?.length)continue;
     try{
-      const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
+      const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;if(r.scoreMode==='preliminary')preliminaryCount++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
       const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),warning:'買超日加權參考價並非外資、投信真實持股成本。'};
       await writeFile(join(detailDir,encodeURIComponent(s.code)+'.json'),JSON.stringify(detail));
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
-    rows,stats:{tracked:rows.length,yearlineReady:ready,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
+  const output={version:'股_V0.6.2',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+    rows,stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
       {name:'櫃買中心三大法人',url:'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading'}],
     backfill:{cursor:store.backfillCursor,complete:store.backfillComplete,lastBatch:store.backfillLastBatch||null},
     errors:store.errors.slice(-12),
-    message:ready===0?'目前尚無具備 MA240 的股票；請先完成歷史回補。':null};
+    message:ready===0?'尚未建立 MA240 完整年線；如已有至少 60 個交易日資料，可使用明確標示的短期初步觀察。':null};
   await writeFile(join(root,'index.json'),JSON.stringify(output));
-  console.log('已輸出：',rows.length,'檔，MA240 完整：',ready,'檔；分析失敗：',failed);
+  console.log('已輸出：',rows.length,'檔，MA240 完整：',ready,'檔；短期初步觀察：',preliminaryCount,'檔；分析失敗：',failed);
   return output;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){buildOutput(await loadStore()).catch(e=>{console.error(e);process.exitCode=1;});}

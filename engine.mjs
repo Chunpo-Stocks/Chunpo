@@ -1,4 +1,4 @@
-// 股_V0.6.1 — pure parsing, indicators and pattern heuristics. No real-trade-price claims.
+// 股_V0.6.2 — pure parsing, indicators and pattern heuristics. No real-trade-price claims.
 export const SOURCES = Object.freeze({
   twsePrice:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL',
   tpexPrice:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',

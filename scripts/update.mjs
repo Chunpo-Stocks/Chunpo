@@ -1,3 +1,4 @@
+// 股_V0.6.2 — 保留回補游標，跳過經驗證休市日，遇資料錯誤不跳過交易日。
 import {loadStore,saveStore,addBar,addInstitution,buildOutput} from './build.mjs';
 import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst} from '../engine.mjs';
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';

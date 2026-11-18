@@ -2,21 +2,21 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d1523"><meta name="description" content="台股多空智慧篩股｜官方盤後資料、MA240、型態及籌碼觀察">
 <link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="manifest" href="./manifest.webmanifest">
-<title>股_V0.6｜台股雙向雷達</title><link rel="stylesheet" href="./styles.css">
+<title>股_V0.6.2｜台股雙向雷達</title><link rel="stylesheet" href="./styles.css?v=062">
 </head><body>
 <div class="shell">
   <header class="topbar">
-    <div class="brand"><span class="brand-icon">↗↘</span><div><div class="brand-title">台股雙向雷達 <span class="version">股_V0.6</span></div><div class="brand-sub">多空策略 · 型態偵測 · 籌碼觀察</div></div></div>
+    <div class="brand"><span class="brand-icon">↗↘</span><div><div class="brand-title">台股雙向雷達 <span class="version">股_V0.6.2</span></div><div class="brand-sub">多空策略 · 型態偵測 · 籌碼觀察</div></div></div>
     <div class="top-right"><span id="mode" class="pill neutral">讀取中</span><button id="reload" class="tiny-btn" title="重新讀取雲端已產生的資料">↻ 更新畫面</button></div>
   </header>
   <div class="notice" id="notice" role="status">準備載入盤後資料……</div>
   <nav class="nav" aria-label="主功能"><button data-tab="ranking" class="active">多空排行</button><button data-tab="detail">個股查詢</button><button data-tab="intraday">盤中觀察</button><button data-tab="source">資料與說明</button></nav>
   <main>
     <section id="page-ranking" class="page">
-      <div class="hero"><div><span class="eyebrow">TW STOCK SCREENER</span><h1>找出下一個交易日<br>值得觀察的多空候選</h1><p>依日線量價、MA240 年線、MACD、RSI、KD、W／M／V 及圓弧等型態排序。這是研究篩選，不保證漲跌。</p></div><div class="hero-graphic"><div class="pulse"></div><div class="graphline">⌁</div><div class="graph-note">多空雙向追蹤</div></div></div>
+      <div class="hero"><div><span class="eyebrow">TW STOCK SCREENER</span><h1>找出下一個交易日<br>值得觀察的多空候選</h1><p>依日線量價、可用年線、MACD、RSI、KD、W／M／V 及圓弧等型態排序。這是研究篩選，不保證漲跌。</p></div><div class="hero-graphic"><div class="pulse"></div><div class="graphline">⌁</div><div class="graph-note">多空雙向追蹤</div></div></div>
       <div class="stats" id="stats"></div>
-      <div class="panel"><div class="panel-head"><div><h2>多空候選排行榜</h2><p>僅有 ≥250 個交易日價格歷史時才正式給出多空分數</p></div><div class="segmented" role="group" aria-label="多空方向"><button class="selected" data-side="bull">看多</button><button data-side="bear">看空</button></div></div>
-        <div class="filters"><label>代號／名稱<input id="search" placeholder="搜尋個股或代碼" autocomplete="off"></label><label>市場<select id="market"><option value="all">上市＋上櫃</option><option value="上市">上市</option><option value="上櫃">上櫃</option></select></label><label>型態<select id="pattern"><option value="all">不限型態</option><option value="W">W 底</option><option value="M">M 頭</option><option value="V">V 型</option><option value="IV">倒 V</option><option value="ROUND">圓弧底</option><option value="ROUNDTOP">圓弧頂</option><option value="BREAK">放量突破</option><option value="BREAKDOWN">放量跌破</option></select></label><label>MA240<select id="yearline"><option value="all">年線不限</option><option value="up">價格高於年線</option><option value="down">價格低於年線</option></select></label><label>分數 ≥<input id="minscore" type="number" min="0" max="100" value="45"></label></div>
+      <div class="panel"><div class="panel-head"><div><h2>多空候選排行榜</h2><p>≥60 交易日可顯示短期初步觀察；≥250 交易日才具完整 MA240 年線分析</p></div><div class="segmented" role="group" aria-label="多空方向"><button class="selected" data-side="bull">看多</button><button data-side="bear">看空</button></div></div>
+        <div class="filters"><label>代號／名稱<input id="search" placeholder="搜尋個股或代碼" autocomplete="off"></label><label>市場<select id="market"><option value="all">上市＋上櫃</option><option value="上市">上市</option><option value="上櫃">上櫃</option></select></label><label>型態<select id="pattern"><option value="all">不限型態</option><option value="W">W 底</option><option value="M">M 頭</option><option value="V">V 型</option><option value="IV">倒 V</option><option value="ROUND">圓弧底</option><option value="ROUNDTOP">圓弧頂</option><option value="BREAK">放量突破</option><option value="BREAKDOWN">放量跌破</option></select></label><label>資料層級<select id="dataLevel"><option value="all">全部（標示初步／完整）</option><option value="full">完整年線（250 日）</option><option value="preliminary">短期初步（60～249 日）</option></select></label><label>MA240<select id="yearline"><option value="all">年線不限</option><option value="up">價格高於年線</option><option value="down">價格低於年線</option></select></label><label>分數 ≥<input id="minscore" type="number" min="0" max="100" value="45"></label></div>
         <div class="panel-tools"><div id="result-count" class="muted"></div><button id="csv" class="outline-btn">匯出目前條件 CSV</button></div>
         <div class="tablewrap"><table><thead><tr><th>代號／名稱</th><th>市場</th><th>收盤價</th><th>漲跌幅</th><th>MA240</th><th>RSI</th><th>型態候選</th><th>多空分數</th></tr></thead><tbody id="results"></tbody></table></div>
         <div class="footer-note" id="result-footnote"></div>
@@ -24,8 +24,8 @@
     </section>
     <section id="page-detail" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>個股技術與籌碼查詢</h2><p>使用同一份官方盤後資料；法人成本只提供買超日參考值，不是持倉成本。</p></div></div><div class="detail-search"><input id="detail-query" placeholder="輸入股票代號或名稱，例如 2330"><button id="detail-go" class="primary">查詢</button></div><div id="detail-content" class="detail-content"><div class="empty">輸入代號或從多空排行點選股票。</div></div></div></section>
     <section id="page-intraday" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>盤中觀察站</h2><p>預留合法授權的 1～5 分鐘行情接入，不顯示假即時訊號。</p></div><span class="pill warning">盤中資料未接入</span></div><div class="intraday-grid"><div class="info-tile"><h3>可立即使用</h3><p>查看上一交易日的多空候選、MA240、支撐壓力研究線索；點選股票切到個股頁。資料以實際日期標示。</p></div><div class="info-tile"><h3>待行情授權後啟用</h3><p>每 1～5 分鐘掃描量能、當日高低價突破、5／15／30 分 K、盤中強弱分數和提醒。</p></div></div><p class="callout">注意：即使只是免費提供給親友，也不代表能將個人的券商即時報價透過網站轉供他人。此版不串接私人證券帳戶或交易 API。</p><button class="outline-btn" id="intraday-ranking">查看盤後多空候選</button></div></section>
-    <section id="page-source" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>資料來源與同步狀況</h2><p>查看最近一筆官方資料日期，不把網頁刷新時間當成行情時間。</p></div></div><div id="source-content"></div><h3>篩股定義</h3><ul class="rules"><li>日線趨勢依 MA5／10／20／60／120／240、MACD、RSI、KD、量比和型態候選評分。</li><li>同時提供多頭與空頭方向，分數不是上漲／下跌機率，也不是買賣指令。</li><li>W、M、V、圓弧等屬規則式候選型態，需人工確認頸線、量能、除權息與圖形失效條件。</li><li>近 20 日法人買超日的收盤價加權參考值，並非買進成交價或目前庫存成本；主力分點目前不提供。</li><li>公式以未還原日線為主，遇除權息可能失真；若歷史少於 250 交易日則不列正式排行。</li><li>盤中即時資料尚未接入；畫面更新並不代表行情每分鐘更新。</li></ul><button class="outline-btn" id="demo-toggle">切換示範資料</button><p class="small muted">示範資料是人造測試數據，僅用來確認 UI／規則，不代表真實股票。</p></div></section>
+    <section id="page-source" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>資料來源與同步狀況</h2><p>查看最近一筆官方資料日期，不把網頁刷新時間當成行情時間。</p></div></div><div id="source-content"></div><h3>篩股定義</h3><ul class="rules"><li>日線趨勢依 MA5／10／20／60／120／240、MACD、RSI、KD、量比和型態候選評分。</li><li>同時提供多頭與空頭方向，分數不是上漲／下跌機率，也不是買賣指令。</li><li>W、M、V、圓弧等屬規則式候選型態，需人工確認頸線、量能、除權息與圖形失效條件。</li><li>近 20 日法人買超日的收盤價加權參考值，並非買進成交價或目前庫存成本；主力分點目前不提供。</li><li>公式以未還原日線為主，遇除權息可能失真；歷史 60～249 日只列「短期初步觀察」，並排除 MA240 年線條件；≥250 日才列完整年線分析。兩種分數計算不同，不可直接比較。</li><li>盤中即時資料尚未接入；畫面更新並不代表行情每分鐘更新。</li></ul><button class="outline-btn" id="demo-toggle">切換示範資料</button><p class="small muted">示範資料是人造測試數據，僅用來確認 UI／規則，不代表真實股票。</p></div></section>
   </main>
-  <footer>股_V0.6 · 親友免費共享原型 · 僅供資訊研究 · 請確認資料日期與來源</footer>
+  <footer>股_V0.6.2 · 親友免費共享原型 · 僅供資訊研究 · 請確認資料日期與來源</footer>
 </div>
-<script src="./data/demo.js"></script><script src="./app.js"></script></body></html>
+<script src="./data/demo.js"></script><script src="./app.js?v=062"></script></body></html>
