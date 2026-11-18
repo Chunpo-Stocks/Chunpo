@@ -20,6 +20,9 @@ jobs:
           node --check scripts/market-engine.mjs
           node --check scripts/update.mjs
           node --check scripts/margin-daily.mjs
+          node --check public/app.js
+          node --check public/morning.js
+          node --check scripts/verify-integrity.mjs
           npm test
       - name: 官方欄位及日期探測（唯讀，不進行回補或覆寫）
         run: node scripts/audit-probe.mjs
