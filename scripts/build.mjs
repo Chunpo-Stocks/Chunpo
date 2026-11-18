@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {derive,institutionalWindows} from '../engine.mjs';
 import {fibonacci} from './market-engine.mjs';
 import {makeFlowRankings} from './flow-rank.mjs';
+import {createMorningPlan} from './morning-plan.mjs';
 
 export const ROOT=join(dirname(fileURLToPath(import.meta.url)),'..');
 export const STORE=join(ROOT,'store','history.json.gz');
@@ -70,7 +71,7 @@ export async function buildOutput(store){
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.7',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+  const output={version:'股_V0.6.8',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
     rows,flowRankings:makeFlowRankings(store.stocks,store.markets),marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
@@ -88,6 +89,9 @@ export async function buildOutput(store){
     errors:store.errors.slice(-12),
     message:ready===0?'尚未建立 MA240 完整年線；如已有至少 60 個交易日資料，可使用明確標示的短期初步觀察。':null};
   await writeFile(join(root,'index.json'),JSON.stringify(output));
+  const morning=createMorningPlan(store);
+  await writeFile(join(root,'morning-plan.json'),JSON.stringify(morning));
+  console.log('07:00 交易計畫：參考日',morning.targetDate,'多空候選',morning.summary.candidates,'（三策略聯集，不重複計數）');
   console.log('已輸出：',rows.length,'檔，MA240 完整：',ready,'檔；短期初步觀察：',preliminaryCount,'檔；分析失敗：',failed);
   return output;
 }
