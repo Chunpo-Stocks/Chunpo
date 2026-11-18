@@ -1,0 +1,13 @@
+{
+  "name": "stock-v06-friends",
+  "private": true,
+  "version": "0.6.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "update": "node scripts/update.mjs",
+    "build": "node scripts/build.mjs",
+    "demo": "node scripts/make-demo.mjs"
+  },
+  "engines": {"node": ">=20"}
+}
