@@ -23,3 +23,5 @@ jobs:
           npm test
       - name: 官方欄位及日期探測（唯讀，不進行回補或覆寫）
         run: node scripts/audit-probe.mjs
+      - name: 歷史庫全市場品質檢查（唯讀、不覆寫）
+        run: node scripts/audit-store.mjs
