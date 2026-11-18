@@ -1,6 +1,6 @@
 // 股_V0.6.8.2 資料品質清理：不刪除可信的歷史行情，將無來源日期的舊融資券隔離。
 export function quarantineUndatedTwseMargin(store){
- const m=store.marketData??={};m.margin??={};m.marginDetails??={};
+ const m=store.marketData??={};m.indices??={};m.margin??={};m.marginDetails??={};m.sourceStatus??={};
  m.quarantine??={};
  let removed=0;
  const list=m.margin['上市']||[];
@@ -26,6 +26,7 @@ export function quarantineUndatedTwseMargin(store){
 }
 export function invalidateLegacyTwseDealer(store){
  store.dealerRepair??={verifiedDates:[],errors:[],updatedAt:null};
+ store.dealerRepair.verifiedDates??=[];
  const verified=new Set(store.dealerRepair.verifiedDates);
  let invalidated=0;
  for(const s of Object.values(store.stocks||{})){
