@@ -25,3 +25,18 @@ jobs:
         run: node scripts/audit-probe.mjs
       - name: 歷史庫全市場品質檢查（唯讀、不覆寫）
         run: node scripts/audit-store.mjs
+  integration:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 只在PR沙盒執行官方全市場更新（不提交、不部署）
+        run: node scripts/update.mjs --backfill-days=0 --chip-days=0
+      - name: 全市場日期、資料來源、交易計畫一致性驗證
+        run: |
+          node scripts/verify-integrity.mjs
+          node scripts/audit-store.mjs
