@@ -20,11 +20,15 @@ on:
         required: true
         default: '0'
   schedule:
-    # Asia/Taipei = UTC+8: 17:45 / 20:30, Monday-Friday.
-    - cron: '45 9 * * 1-5'
-    - cron: '30 12 * * 1-5'
-    # 台北時間週一至週五約06:40先建立07:00交易計畫；排程不保證準時。
-    - cron: '40 22 * * 0-4'
+    # TW 15:30/17:30/21:30, Monday-Friday
+    - cron: '30 7 * * 1-5'
+    - cron: '30 9 * * 1-5'
+    - cron: '30 13 * * 1-5'
+    # TW 00:00 Tue-Sat (previous trading day's close)
+    - cron: '0 16 * * 1-5'
+    # TW 06:30 Mon-Fri catch-up, 07:00 plan publish
+    - cron: '30 22 * * 0-4'
+    - cron: '0 23 * * 0-4'
 permissions:
   contents: write
   pages: write
@@ -47,11 +51,15 @@ jobs:
           node-version: '22'
       - name: 執行資料規則測試
         run: npm test
-      - name: 向官方取數、更新中央歷史、建立07:00條件式交易計畫
+      - name: 向官方取數、更新中央歷史
+        if: github.event.schedule != '0 23 * * 0-4'
         env:
           BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '0' }}
           CHIP_DAYS: ${{ github.event.inputs.chip_days || '0' }}
         run: node scripts/update.mjs --backfill-days="$BACKFILL_DAYS" --chip-days="$CHIP_DAYS"
+      - name: 台北07:00 以中央歷史庫重新產生盤前推薦
+        if: github.event.schedule == '0 23 * * 0-4'
+        run: node scripts/build.mjs
       - name: 保存唯一歷史資料庫（不把個股細節兩千個檔案每天重複提交）
         run: |
           git config user.name 'stock-data-bot'

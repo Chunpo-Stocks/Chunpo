@@ -76,10 +76,17 @@ export function parseTwseInst(payload,date){
     let f=t.fields.map(norm);const code=idx(f,['證券代號','股票代號']);
     const foreign=idx(f,['外陸資買賣超股數(不含外資自營商)','外陸資買賣超股數']);
     const trust=idx(f,['投信買賣超股數']);
-    const dealer=idx(f,['自營商買賣超股數','自營商買賣超股數(自行買賣)']);
+    // 必須完整比對「自營商」，不可讓「外資自營商」被模糊 includes 命中！
+    const dealer=f.indexOf(norm('自營商買賣超股數'));
+    const self=f.indexOf(norm('自營商買賣超股數(自行買賣)'));
+    const hedge=f.indexOf(norm('自營商買賣超股數(避險)'));
     if(code<0||foreign<0||trust<0)continue;
+    if(dealer<0 && (self<0||hedge<0))throw Error('TWSE T86 自營商買賣超欄位不存在，拒絕以 0 代替');
     for(const r of t.rows){if(!Array.isArray(r))continue;let s=String(r[code]??'').trim();if(!ordinary(s))continue;
-      out.push({code:s,d:date,foreign:num(r[foreign]),trust:num(r[trust]),dealer:dealer>=0?num(r[dealer]):null,source:SOURCES.twseInst.replace('{date}',date.replaceAll('-',''))});
+      const a=dealer>=0?num(r[dealer]):NaN, b=self>=0?num(r[self]):NaN,h=hedge>=0?num(r[hedge]):NaN;
+      if(self>=0&&hedge>=0&&(![b,h].every(Number.isFinite)||(dealer>=0&&Number.isFinite(a)&&Math.abs(a-(b+h))>1)))throw Error('TWSE T86 自營商合計 ≠ 自行買賣＋避險，拒絕不一致欄位');
+      const dealerNet=Number.isFinite(a)?a:([b,h].every(Number.isFinite)?b+h:null);
+      out.push({code:s,d:date,foreign:num(r[foreign]),trust:num(r[trust]),dealer:dealerNet,source:SOURCES.twseInst.replace('{date}',date.replaceAll('-',''))});
     }
   }
   return out;

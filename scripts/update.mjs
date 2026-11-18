@@ -4,6 +4,8 @@ import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst,pars
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';
 import {chooseTwseFallbackDate,validateTwseDaily} from './twse-fallback.mjs';
 import {planChipBackfill,recordChipResult} from './chip-planner.mjs';
+import {parseTwseMarginDaily} from './margin-daily.mjs';
+import {quarantineUndatedTwseMargin,invalidateLegacyTwseDealer,listedDealerPendingDates} from './data-quality.mjs';
 import {parseTwseIndex,parseTpexIndex,parseMargin,parseTxFutures,mergeDaily,summarizeMargin,parseTwseIndexMonth,parseTpexIndexMonth,mergeIndexMonth} from './market-engine.mjs';
 const nap=ms=>new Promise(r=>setTimeout(r,ms));
 const todayTaipei=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -14,6 +16,10 @@ if(!Number.isInteger(chosen)||chosen<0||chosen>120)throw Error('--backfill-days 
 const chipDays=Number(args.find(s=>s.startsWith('--chip-days='))?.split('=')[1]??'20');
 if(!Number.isInteger(chipDays)||chipDays<0||chipDays>60)throw Error('--chip-days 需為 0～60 個有股價資料的交易日');
 const store=await loadStore();const errors=[];let changed=false;
+const oldMarginInvalid=quarantineUndatedTwseMargin(store);
+const oldDealerInvalid=invalidateLegacyTwseDealer(store);
+if(oldMarginInvalid||oldDealerInvalid)console.warn('::warning::品質稽核：隔離無官方日期之舊上市融資券',oldMarginInvalid,'筆；將錯誤自營商零值改為待重查',oldDealerInvalid,'筆');
+
 const headers={'User-Agent':'Stock-V0.6-Friendly-Research/0.6 (+Public-data; no-trading)','Accept':'application/json,text/plain,*/*'};
 async function json(url,{tries=2}={}){
   for(let k=0;k<tries;k++){
@@ -40,6 +46,7 @@ for(const market of ['上市','上櫃']){
       if(inst.length<50)throw Error('法人有效筆數不足：'+inst.length);
       inst.forEach(x=>addInstitution(store,x));changed=true;
       store.markets[market].institutionDate=date;
+      if(market==='上市'&&!store.dealerRepair.verifiedDates.includes(date))store.dealerRepair.verifiedDates.push(date);
       console.log(market,'法人',inst.length);
     }catch(e){errors.push(market+'法人：'+e.message);console.error(errors.at(-1));}
   }catch(e){errors.push(market+'最新行情：'+e.message);store.markets[market]={...(store.markets[market]||{}),status:'error',error:e.message,checkedAt:new Date().toISOString()};console.error(errors.at(-1));}
@@ -63,6 +70,7 @@ if(fallbackDate){
    if(inst.length<50)throw Error('有效法人筆數不足：'+inst.length);
    for(const x of inst)addInstitution(store,x);
    store.markets['上市'].institutionDate=fallbackDate;
+   if(!store.dealerRepair.verifiedDates.includes(fallbackDate))store.dealerRepair.verifiedDates.push(fallbackDate);
    console.log('上市 日期指定法人',fallbackDate,inst.length);
   }catch(e){
    const message='上市 '+fallbackDate+' 法人日期指定補抓失敗：'+e.message;
@@ -95,12 +103,17 @@ async function pullMarket(name,fn){
 }
 await pullMarket('taiex',payload=>{const rows=parseTwseIndex(payload);store.marketData.indices.taiex=mergeDaily(store.marketData.indices.taiex,rows);return `${rows.length}日`});
 await pullMarket('otc',payload=>{const rows=parseTpexIndex(payload);store.marketData.indices.otc=mergeDaily(store.marketData.indices.otc,rows);return `${rows.length}日`});
-await pullMarket('tx',payload=>{const row=parseTxFutures(payload);const previous=store.marketData.futures||{};
-  const key=x=>`${x.d}/${x.contractMonth}/${x.session}`;
-  const all=[...(previous.snapshots||[]),row.day,...(row.night?[row.night]:[])];
-  const uniq=new Map(all.filter(Boolean).map(x=>[key(x),x]));
-  store.marketData.futures={...row,snapshots:[...uniq.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-450)};
-  return `${row.date} ${row.contractMonth} ${row.day.session}`});
+await pullMarket('tx',payload=>{const row=parseTxFutures(payload,{asOf:new Date()});const previous=store.marketData.futures||{};
+ const key=x=>`${x.d}/${x.contractMonth}/${x.session}`;
+ // 逐契約、逐交易日、逐時段存下快照；更換近月時不拼接不同到期月份。
+ const all=[...(previous.snapshots||[]),...(row.newSnapshots||[])];
+ const uniq=new Map(all.filter(Boolean).map(x=>[key(x),x]));
+ const {newSnapshots,...current}=row;
+ store.marketData.futures={...current,snapshots:[...uniq.values()].sort((a,b)=>a.d.localeCompare(b.d)||a.contractMonth.localeCompare(b.contractMonth)).slice(-450),
+  checkedAt:new Date().toISOString()};
+ if(!row.contractMonth||!row.day&&!row.night)throw Error('本次 TX 有行情，但全部合約已到期或有效近月缺少成交價，已停止顯示舊合約');
+ console.log('臺指期換月檢核',row.contractMonth,'契約最後交易日',row.expiresOn,'來源交易日',row.sourceDate,'選用日盤',row.day?.d||'無','夜盤',row.night?.d||'無');
+ return `${row.contractMonth} 日盤:${row.day?.d||'無'} 夜盤:${row.night?.d||'無'}`});
 // 正式月資料回補（加權收盤／OTC OHLC），首批最近 8 個月，合併保留舊資料。
 // 有效日數不足時仍不冒充日內高低；期貨不同契約不拼接。
 function recentMonths(count=6){const now=todayTaipei().slice(0,7),[yr,mo]=now.split('-').map(Number);
@@ -129,31 +142,42 @@ for(const month of recentMonths(8)){
 }
 store.marketData.indexBackfillLastBatch={at:new Date().toISOString(),markets:Object.fromEntries(['taiex','otc'].map(name=>[name,{...monthReport[name],before:monthBefore[name],after:(store.marketData.indices[name]||[]).length}]))};
 console.log('指數月回補摘要',JSON.stringify(store.marketData.indexBackfillLastBatch.markets));
+// 每個市場以來源本身的日期核實，上市改用指定交易日 MI_MARGN，避免 OpenAPI 舊快照複製到新日期。
 for(const [name,market] of [['twseMargin','上市'],['tpexMargin','上櫃']]){
  const anchor=store.markets[market]?.date||null;
- await pullMarket(name,payload=>{
-  if(!anchor)throw Error('無可比對的最新股價日期，拒絕歸檔');
-  const parsed=parseMargin(payload,market,anchor);
-  const recordDate=parsed.map(x=>x.d).sort().at(-1);
-  const items=parsed.filter(x=>x.d===recordDate);
-  if(items.length<30)throw Error('最新有效融資券日期的股票數不足：'+recordDate);
-  if(recordDate>anchor)throw Error('融資券官方日期晚於已確認股價日期');
+ if(!anchor){const message=market+'融資券：缺可核實股票日期';errors.push(message);console.warn('::warning::'+message);continue;}
+ const url=market==='上市'?'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date='+anchor.replaceAll('-','')+'&selectType=ALL&response=json':marketUrls.tpexMargin;
+ try{
+  const payload=await json(url,{tries:3});
+  const parsed=market==='上市'?parseTwseMarginDaily(payload,anchor):parseMargin(payload,market,anchor);
+  const recordDate=parsed.map(x=>x.d).sort().at(-1),items=parsed.filter(x=>x.d===recordDate);
+  if(items.length<30||recordDate>anchor)throw Error('來源交易日錯誤或有效股票不足');
   store.marketData.marginDetails??={};
-  const before=store.marketData.marginDetails[market]||{};
-  store.marketData.marginDetails[market]={...before,[recordDate]:items};
-  const prev=(store.marketData.margin[market]||[]).filter(x=>x.d<recordDate).at(-1)||null;
-  const sum=summarizeMargin(items,prev);
+  store.marketData.marginDetails[market]??={};
+  const previous=(store.marketData.margin[market]||[]).filter(x=>x.d<recordDate).at(-1)||null;
+  // 未取得官方日期的一律隔離不發布；即使今日股價更新也不能替融資券補日期。
+  if(items.some(x=>!x.dateConfirmed))throw Error('沒有可核實來源日期，拒絕以股價日期推定融資券日期');
+  const sum=summarizeMargin(items,previous);
+  store.marketData.marginDetails[market][recordDate]=items;
   store.marketData.margin[market]=mergeDaily(store.marketData.margin[market],[sum]);
-  for(const item of items){const st=store.stocks[item.code];if(!st||st.market!==market)continue;
+  for(const item of items){
+   const st=store.stocks[item.code];if(!st||st.market!==market)continue;
    st.marginHistory??=[];st.marginHistory=mergeDaily(st.marginHistory,[item],260);
   }
-  // 每次僅保留 20 個詳細快照，避免 repo 歷史庫膨脹。
   const keys=Object.keys(store.marketData.marginDetails[market]).sort().reverse();
   for(const older of keys.slice(20))delete store.marketData.marginDetails[market][older];
-  return `${recordDate} ${items.length}檔（${sum.dateConfirmed?'日期已核對':'日期錨定待驗證'}）`;
- });
+  const stale=recordDate<anchor;
+  store.marketData.sourceStatus[name]={status:stale?'stale':'ok',checkedAt:new Date().toISOString(),url,date:recordDate,
+    message:stale?'官方融資券目前停留在 '+recordDate+'；不冒充 '+anchor:''};
+  changed=true;
+  console.log('融資券官方日期核實',market,recordDate,items.length,'筆；股票日期',anchor,stale?'（資料晚到）':'');
+ }catch(e){
+  const msg=market+'融資券：'+e.message;
+  store.marketData.sourceStatus[name]={status:'error',checkedAt:new Date().toISOString(),url,message:e.message};
+  errors.push(msg);console.warn('::warning::'+msg);
+ }
+ await nap(500);
 }
-
 // 照上次游標往更早日期回補；休市不占交易日，也不重抓完整庫。
 // 保留嚴格驗證：未知的空回應不得略過、不得寫入錯誤日期資料。
 let cursor=store.backfillCursor||dayShift(todayTaipei(),-2);
@@ -236,6 +260,31 @@ if(chipDays){
     chipsCursor=dayShift(d,-1);changed=true;
   }
 }
+
+// 系統性更正早期上市 T86 自營商誤抓外資自營商的舊零值：每次最多補20個歷史日期。
+const repairDates=listedDealerPendingDates(store).slice(0,20);
+let dealerRepairedDates=0,dealerRepairErrors=[];
+for(const d of repairDates){
+ try{
+  const url=SOURCES.twseInst.replace('{date}',d.replaceAll('-',''));
+  const payload=await json(url,{tries:2});
+  if(isoDate(payload?.date)&&isoDate(payload.date)!==d)throw Error('來源日期不符');
+  const rows=parseTwseInst(payload,d);
+  const present=rows.filter(x=>store.stocks[x.code]?.market==='上市'&&store.stocks[x.code]?.bars?.some(b=>b.d===d));
+  if(present.length<500)throw Error('有效自營商歷史股票不足：'+present.length);
+  for(const row of present)addInstitution(store,row);
+  store.dealerRepair.verifiedDates.push(d);
+  dealerRepairedDates++;changed=true;
+ }catch(e){
+  const msg=d+' 上市自營商歷史修復：'+e.message;
+  dealerRepairErrors.push(msg);console.warn('::warning::'+msg);
+ }
+ await nap(450);
+}
+store.dealerRepair.verifiedDates=[...new Set(store.dealerRepair.verifiedDates)].sort();
+store.dealerRepair.errors=dealerRepairErrors.slice(0,5);
+store.dealerRepair.updatedAt=new Date().toISOString();
+console.log('上市自營商歷史修復：',dealerRepairedDates,'日成功／',repairDates.length,'日嘗試；尚待驗證',listedDealerPendingDates(store).length,'日');
 
 store.chipsBackfillCursor=chipsCursor;
 store.chipsBackfillPending=pending; // 缺漏不能靜默裁掉，直到驗證成功才能刪除
