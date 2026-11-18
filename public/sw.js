@@ -1,0 +1,4 @@
+const CACHE='stock-v06-shell-v1';const CORE=['./','./index.html','./styles.css','./app.js','./data/demo.js','./icon.svg'];
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(url.origin!==location.origin||url.pathname.includes('/data/index.json')||url.pathname.includes('/data/stocks/'))return;event.respondWith(fetch(event.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(CACHE).then(c=>c.put(event.request,cp))}return r}).catch(()=>caches.match(event.request)))});
