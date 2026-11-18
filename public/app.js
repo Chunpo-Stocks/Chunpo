@@ -59,7 +59,7 @@ function renderFibonacci(d){
 function renderMarginDetail(d){
  const rows=(d.marginHistory||[]).slice(-20).reverse(),last=rows[0];
  const unit='原始來源單位，未核實前不跨市場合計';
- const tbody=rows.map((r,i)=>{const older=rows[i+1],dm=older?r.margin-older.margin:null,ds=older?r.short-older.short:null;
+ const tbody=rows.map((r,i)=>{const older=rows[i+1],dm=Number.isFinite(r.prevMargin)?r.margin-r.prevMargin:(older?r.margin-older.margin:null),ds=Number.isFinite(r.prevShort)?r.short-r.prevShort:(older?r.short-older.short:null);
    return `<tr><td>${esc(r.d)}</td><td>${fmt(r.margin,0)}</td><td class="${tint(dm)}">${Number.isFinite(dm)?(dm>0?'+':'')+fmt(dm,0):'—'}</td><td>${fmt(r.short,0)}</td><td class="${tint(ds)}">${Number.isFinite(ds)?(ds>0?'+':'')+fmt(ds,0):'—'}</td><td>${r.dateConfirmed?'已核實':'日期錨定待核'}</td></tr>`;}).join('');
  return `<section class="institution"><div class="section-heading"><h3>個股融資／融券</h3><span class="pill neutral">官方盤後快照</span></div>
  <p class="small muted">${esc(unit)}；未回補的舊日期不以零代替。${last?'最近歸檔 '+esc(last.d):'尚未取得個股融資券'}</p>
@@ -72,7 +72,7 @@ function renderMacro(){
  const marketCard=(name,key)=>{const x=idx[key],latest=x?.latest,f=fibFor(x),date=latest?.d||'資料不足';
    const rows=f?.retracements?.map(z=>`<tr><td>${fmt(z.ratio*100,1)}%</td><td>${fmt(z.price)}</td></tr>`).join('')||'<tr><td colspan="2">累積歷史不足；先顯示最後有效指數，不偽造波段</td></tr>';
    return `<article class="macro-card"><div class="macro-card-head"><h3>${esc(name)}</h3><span class="pill neutral">${esc(date)}</span></div><strong class="macro-value">${fmt(latest?.c,2)}</strong><p class="small muted">官方已累積 ${x?.bars?.length||0} 日／目前斐波區間 ${n} 日；非盤中即時行情</p>
-    ${f?`<p class="small">極高 ${fmt(f.high)}（${esc(f.highDate)}）・極低 ${fmt(f.low)}（${esc(f.lowDate)}）・${f.direction==='up'?'上漲段回檔參考':'下跌段反彈參考'}</p>`:'<p class="small muted">斐波回撤資料不足</p>'}
+    ${f?`<p class="small">極高 ${fmt(f.high)}（${esc(f.highDate)}）・極低 ${fmt(f.low)}（${esc(f.lowDate)}）・${f.direction==='up'?'上漲段回檔參考':'下跌段反彈參考'}；${f.basis==='close'?'僅收盤價錨點':'實際高低價錨點'}</p>`:'<p class="small muted">斐波回撤資料不足</p>'}
     <div class="tablewrap"><table class="mini-table"><thead><tr><th>回撤比例</th><th>價位</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${f?`<p class="small muted">延伸：${f.extensions.map(z=>fmt(z.ratio,3)+'→'+fmt(z.price)).join('　')}</p>`:''}</article>`;
  };
@@ -82,9 +82,9 @@ function renderMacro(){
  <div class="metric-grid two-metrics"><div class="metric"><div class="key">日盤結算價</div><b>${fmt(ft?.day?.settlement)}</b></div><div class="metric"><div class="key">夜盤最後成交</div><b>${fmt(ft?.night?.close)}</b></div><div class="metric"><div class="key">日盤未平倉</div><b>${num(ft?.day?.openInterest)}</b></div><div class="metric"><div class="key">歸檔資料筆數</div><b>${num(ft?.snapshots?.length||0)}</b></div></div>
  <p class="small muted">不同契約月份不可直接拼接計算斐波；盤後資料不等於即時台指期報價。</p></article>`;
  const marginCard=market=>{const items=ms[market]||[],last=items.at(-1),prev=items.length>1?items.at(-2):null;
- const change=(last&&prev&&last.d!==prev.d)?last.margin-prev.margin:null;const shortChange=(last&&prev&&last.d!==prev.d)?last.short-prev.short:null;
+ const change=Number.isFinite(last?.changeMargin)?last.changeMargin:(last&&prev&&last.d!==prev.d)?last.margin-prev.margin:null;const shortChange=Number.isFinite(last?.changeShort)?last.changeShort:(last&&prev&&last.d!==prev.d)?last.short-prev.short:null;
  return `<article class="macro-card"><div class="macro-card-head"><h3>${esc(market)}融資融券</h3><span class="pill neutral">${esc(last?.d||'未取得')}</span></div>
- <div class="metric-grid two-metrics"><div class="metric"><div class="key">融資餘額</div><b>${fmt(last?.margin,0)}</b></div><div class="metric"><div class="key">融券餘額</div><b>${fmt(last?.short,0)}</b></div><div class="metric"><div class="key">前次融資變化</div><b class="${tint(change)}">${Number.isFinite(change)?(change>0?'+':'')+fmt(change,0):'—'}</b></div><div class="metric"><div class="key">融券餘額變化</div><b class="${tint(shortChange)}">${Number.isFinite(shortChange)?(shortChange>0?'+':'')+fmt(shortChange,0):'—'}</b></div></div>
+ <div class="metric-grid two-metrics"><div class="metric"><div class="key">融資餘額</div><b>${fmt(last?.margin,0)}</b></div><div class="metric"><div class="key">融券餘額</div><b>${fmt(last?.short,0)}</b></div><div class="metric"><div class="key">當日融資變化</div><b class="${tint(change)}">${Number.isFinite(change)?(change>0?'+':'')+fmt(change,0):'—'}</b></div><div class="metric"><div class="key">當日融券變化</div><b class="${tint(shortChange)}">${Number.isFinite(shortChange)?(shortChange>0?'+':'')+fmt(shortChange,0):'—'}</b></div></div>
  <p class="small muted">${esc(last?.coverageNote||'尚未取得資料')}。${esc(last?.unit||'官方原始單位待核對')}；請勿直接跨上市、上櫃加總。</p>
  <div class="tablewrap"><table class="mini-table"><thead><tr><th>交易日</th><th>融資</th><th>融券</th></tr></thead><tbody>${items.slice(-10).reverse().map(x=>`<tr><td>${esc(x.d)}</td><td>${fmt(x.margin,0)}</td><td>${fmt(x.short,0)}</td></tr>`).join('')||'<tr><td colspan="3">尚無資料</td></tr>'}</tbody></table></div></article>`};
  const errorStatus=Object.entries(m.sourceStatus||{}).filter(([_,x])=>x.status==='error').map(([key,v])=>`${esc(key)}：${esc(v.message||'取數失敗')}`).join('；');

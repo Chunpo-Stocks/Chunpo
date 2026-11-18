@@ -12,11 +12,12 @@ const positive=x=>{const v=num(x);return Number.isFinite(v)&&v>0?v:null};
 export function fibonacci(series,window=60){
  if(!Array.isArray(series)||series.length<20)return null;
  const n=Math.min(Math.max(20,Math.trunc(window)),series.length);
- const rows=series.slice(-n).filter(b=>b&&/^20\d{2}-\d{2}-\d{2}$/.test(b.d)&&positive(b.h)!==null&&positive(b.l)!==null&&positive(b.c)!==null&&b.h>=b.l);
+ const rows=series.slice(-n).filter(b=>b&&/^20\d{2}-\d{2}-\d{2}$/.test(b.d)&&positive(b.c)!==null);
+ const basis=rows.every(b=>positive(b.h)!==null&&positive(b.l)!==null&&b.h>=b.l)?'highlow':'close';
  if(rows.length<20)return null;
- let hi=0,lo=0;for(let i=1;i<rows.length;i++){if(rows[i].h>rows[hi].h)hi=i;if(rows[i].l<rows[lo].l)lo=i;}
+ let hi=0,lo=0;for(let i=1;i<rows.length;i++){if((basis==='highlow'?rows[i].h:rows[i].c)>(basis==='highlow'?rows[hi].h:rows[hi].c))hi=i;if((basis==='highlow'?rows[i].l:rows[i].c)<(basis==='highlow'?rows[lo].l:rows[lo].c))lo=i;}
  if(hi===lo)return null;
- const high=rows[hi].h,low=rows[lo].l,span=high-low;
+ const high=basis==='highlow'?rows[hi].h:rows[hi].c,low=basis==='highlow'?rows[lo].l:rows[lo].c,span=high-low;
  if(span<=0||span/low<0.005)return null;
  const rising=lo<hi,levels=[.236,.382,.5,.618,.786],exp=[1,1.272,1.618,2];
  const recent=rows.at(-1),current=recent.c;
@@ -25,9 +26,9 @@ export function fibonacci(series,window=60){
  // 斐波時間僅顯示第幾個交易日，不使用日曆推算成保證轉折日期。
  const anchorPeriod=Math.abs(hi-lo);
  const timeWindows=[.618,1,1.618,2.618].map(r=>({ratio:r,tradeDays:Math.ceil(anchorPeriod*r)}));
- return {window:n,validDays:rows.length,direction:rising?'up':'down',low:round(low),high:round(high),lowDate:rows[lo].d,highDate:rows[hi].d,
+ return {window:n,validDays:rows.length,basis,direction:rising?'up':'down',low:round(low),high:round(high),lowDate:rows[lo].d,highDate:rows[hi].d,
    current:round(current),currentDate:recent.d,anchorSpanTradingDays:anchorPeriod,retracements,extensions,timeWindows,
-   method:'以窗口內最高高點/最低低點錨定；依極值先後判定漲段/跌段，並非自動辨識主波段；不預測轉折日期'};
+   method:basis==='close'?'以官方每日收盤價最高／最低作近似斐波錨點，不是日內最高／最低，也非波段預測':'以窗口內最高高點/最低低點錨定；非主波段判定或轉折預測'};
 }
 export function parseTwseIndex(payload){
  if(!Array.isArray(payload))throw Error('證交所指數非陣列');
@@ -50,13 +51,15 @@ export function parseMargin(payload,market,anchorDate){
  for(const x of payload){
  const code=String(field(x,['Code','StockNo','SecurityCode','SecuritiesCompanyCode','股票代號','證券代號'])??'').trim();
  if(!ordinary(code))continue;
- const financing=quantity(field(x,['融資今日餘額','融資今餘額','MarginPurchaseTodayBalance','MarginPurchaseCurrentBalance','MarginTodayBalance','MarginBalance']));
- const shorting=quantity(field(x,['融券今日餘額','融券今餘額','ShortSaleTodayBalance','ShortSaleCurrentBalance','ShortTodayBalance','ShortBalance']));
+ const financing=quantity(field(x,['融資今日餘額','融資今餘額','MarginPurchaseBalance','MarginPurchaseTodayBalance','MarginPurchaseCurrentBalance','MarginTodayBalance','MarginBalance']));
+ const shorting=quantity(field(x,['融券今日餘額','融券今餘額','ShortSaleBalance','ShortSaleTodayBalance','ShortSaleCurrentBalance','ShortTodayBalance','ShortBalance']));
  if(financing===null||shorting===null)continue;
  const declared=isoDate(field(x,['Date','日期','交易日期','TradingDate','ReportDate']));
- if(declared&&anchorDate&&declared!==anchorDate)continue;
+ if(declared&&anchorDate&&declared>anchorDate)continue; // 官方融資券晚公布時保留原始日期，不強迫等於最新股價日
  const d=declared||anchorDate;if(!d)continue;
- out.push({code,d,market,margin:financing,short:shorting,dateConfirmed:!!declared,unit:'來源原始單位（待官方欄位核對）'});
+ const prevMargin=quantity(field(x,['融資前日餘額','MarginPurchaseBalancePreviousDay','MarginPurchasePreviousBalance']));
+ const prevShort=quantity(field(x,['融券前日餘額','ShortSaleBalancePreviousDay','ShortSalePreviousBalance']));
+ out.push({code,d,market,margin:financing,short:shorting,prevMargin,prevShort,dateConfirmed:!!declared,unit:'來源原始單位'});
  }
  if(out.length<30)throw Error(`${market}融資融券欄位未對應成功／可驗證資料不足 (${out.length})`);
  return out;
@@ -91,8 +94,32 @@ export function summarizeMargin(items,previous){
  const total=x=>items.reduce((s,r)=>s+r[x],0);
  const margin=total('margin'),short=total('short');
  const prev=previous?.d<items[0].d?previous:null;
- return {d:items[0].d,count:items.length,margin,short,changeMargin:prev?margin-prev.margin:null,changeShort:prev?short-prev.short:null,
+ const allHaveDailyPrev=items.every(x=>Number.isFinite(x.prevMargin)&&Number.isFinite(x.prevShort));
+ const dailyMargin=allHaveDailyPrev?margin-items.reduce((s,r)=>s+r.prevMargin,0):null;
+ const dailyShort=allHaveDailyPrev?short-items.reduce((s,r)=>s+r.prevShort,0):null;
+ return {d:items[0].d,count:items.length,margin,short,changeMargin:dailyMargin??(prev?margin-prev.margin:null),changeShort:dailyShort??(prev?short-prev.short:null),
    unit:'原始來源單位；未確認一致前不跨市場加總',dateConfirmed:items.every(x=>x.dateConfirmed),
    coverageNote:items.some(x=>!x.dateConfirmed)?'資料集未附明確交易日，採同市場最新股價日錨定，待驗證':'來源日期已確認',
    coverageCount:items.length};
+}
+
+// 股_V0.6.6：官方按月指數回補。TWSE FMTQIK 只有收盤，不假裝有日高低；OTC 提供 OHLC。
+export function parseTwseIndexMonth(payload,monthKey){
+ if(payload?.stat!=='OK'||!Array.isArray(payload.fields)||!Array.isArray(payload.data))throw Error('TWSE FMTQIK 月資料非有效官方表');
+ const di=payload.fields.indexOf('日期'),ci=payload.fields.indexOf('發行量加權股價指數');
+ if(di<0||ci<0)throw Error('TWSE FMTQIK 欄位格式異動');
+ const rows=payload.data.map(row=>({d:isoDate(row?.[di]),c:positive(row?.[ci])}))
+   .filter(x=>x.d?.startsWith(monthKey+'-')&&x.c!==null)
+   .map(x=>({...x,o:null,h:null,l:null,priceBasis:'close'}));
+ if(!rows.length)throw Error('TWSE FMTQIK 查無該月有效交易日');
+ return rows.sort((a,b)=>a.d.localeCompare(b.d));
+}
+export function parseTpexIndexMonth(payload,monthKey){
+ if(payload?.stat!=='ok')throw Error('TPEx indexInfo/inx 月資料狀態非 ok');
+ const t=payload.tables?.[0];const fields=['日期','開市','最高','最低','收市','漲/跌'];
+ if(!t||!Array.isArray(t.fields)||fields.some((x,i)=>t.fields[i]!==x)||!Array.isArray(t.data))throw Error('TPEx 指數歷史欄位格式異動');
+ const rows=t.data.map(row=>({d:isoDate(row?.[0]),o:positive(row?.[1]),h:positive(row?.[2]),l:positive(row?.[3]),c:positive(row?.[4])}))
+  .filter(x=>x.d?.startsWith(monthKey+'-')&&[x.o,x.h,x.l,x.c].every(Number.isFinite)&&x.h>=x.l&&x.c<=x.h&&x.c>=x.l);
+ if(!rows.length)throw Error('TPEx 指數該月無有效交易日');
+ return rows.sort((a,b)=>a.d.localeCompare(b.d));
 }

@@ -3,7 +3,7 @@ import {loadStore,saveStore,addBar,addInstitution,buildOutput} from './build.mjs
 import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst,parseTpexInstHistory,isoDate} from '../engine.mjs';
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';
 import {planChipBackfill,recordChipResult} from './chip-planner.mjs';
-import {parseTwseIndex,parseTpexIndex,parseMargin,parseTxFutures,mergeDaily,summarizeMargin} from './market-engine.mjs';
+import {parseTwseIndex,parseTpexIndex,parseMargin,parseTxFutures,mergeDaily,summarizeMargin,parseTwseIndexMonth,parseTpexIndexMonth} from './market-engine.mjs';
 const nap=ms=>new Promise(r=>setTimeout(r,ms));
 const todayTaipei=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dayShift=(s,n)=>new Date(Date.parse(s+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
@@ -71,12 +71,40 @@ await pullMarket('tx',payload=>{const row=parseTxFutures(payload);const previous
   const uniq=new Map(all.filter(Boolean).map(x=>[key(x),x]));
   store.marketData.futures={...row,snapshots:[...uniq.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-450)};
   return `${row.date} ${row.contractMonth} ${row.day.session}`});
+// 正式月資料回補（加權收盤／OTC OHLC），首批最近 8 個月，合併保留舊資料。
+// 有效日數不足時仍不冒充日內高低；期貨不同契約不拼接。
+function recentMonths(count=6){const now=todayTaipei().slice(0,7),[yr,mo]=now.split('-').map(Number);
+ return Array.from({length:count},(_,i)=>{const dt=new Date(Date.UTC(yr,mo-1-i,1));return dt.toISOString().slice(0,7)});}
+store.marketData.monthHistory??={taiex:{},otc:{}};
+const currentMonth=todayTaipei().slice(0,7);
+for(const month of recentMonths(8)){
+ for(const [name,url,parse] of [
+  ['taiex','https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date='+month.replace('-','')+'01',parseTwseIndexMonth],
+  ['otc','https://www.tpex.org.tw/www/zh-tw/indexInfo/inx?date='+month.replace('-','/')+'/01&response=json',parseTpexIndexMonth]
+ ]){
+  if(month!==currentMonth&&store.marketData.monthHistory[name]?.[month]?.status==='ok')continue;
+  try{const result=parse(await json(url,{tries:3}),month);
+   // 月檔可能在更新後到達，保留先前已有更完整 OHLC 的快照；當日仍以快照為準。
+   const old=store.marketData.indices[name]||[];const map=new Map(result.map(x=>[x.d,x]));
+   for(const item of old)if(item?.d)map.set(item.d,item);
+   store.marketData.indices[name]=[...map.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-550);
+   store.marketData.monthHistory[name][month]={status:'ok',rows:result.length,source:url};
+   store.marketData.sourceStatus[name+'Monthly']={status:'ok',url,month,rows:result.length,checkedAt:new Date().toISOString()};changed=true;
+   console.log('月歷史指數',name,month,'取得',result.length,'日；總數',store.marketData.indices[name].length);
+  }catch(e){const message=name+' '+month+'歷史指數：'+e.message;errors.push(message);console.warn('::warning::'+message);
+   store.marketData.sourceStatus[name+'Monthly']={status:'error',url,month,message:e.message,checkedAt:new Date().toISOString()};}
+  await nap(900);
+ }
+}
 for(const [name,market] of [['twseMargin','上市'],['tpexMargin','上櫃']]){
  const anchor=store.markets[market]?.date||null;
  await pullMarket(name,payload=>{
   if(!anchor)throw Error('無可比對的最新股價日期，拒絕歸檔');
-  const items=parseMargin(payload,market,anchor),recordDate=items[0].d;
-  if(recordDate!==anchor)throw Error('融資券日期與最新股價不符');
+  const parsed=parseMargin(payload,market,anchor);
+  const recordDate=parsed.map(x=>x.d).sort().at(-1);
+  const items=parsed.filter(x=>x.d===recordDate);
+  if(items.length<30)throw Error('最新有效融資券日期的股票數不足：'+recordDate);
+  if(recordDate>anchor)throw Error('融資券官方日期晚於已確認股價日期');
   store.marketData.marginDetails??={};
   const before=store.marketData.marginDetails[market]||{};
   store.marketData.marginDetails[market]={...before,[recordDate]:items};

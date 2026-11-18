@@ -69,7 +69,7 @@ export async function buildOutput(store){
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.5',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+  const output={version:'股_V0.6.6',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
     rows,marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
