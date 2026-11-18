@@ -10,12 +10,12 @@ const num=x=>typeof x==='number'&&Number.isFinite(x)?x:null;
 const r2=x=>num(x)===null?null:Math.round(x*100)/100;
 const D=s=>new Date(s+'T00:00:00Z');
 const shift=s=>new Date(D(s).getTime()+86400000).toISOString().slice(0,10);
-function nextWeekday(s){let d=shift(s);while([0,6].includes(D(d).getUTCDay()))d=shift(d);return d;}
+export function nextWeekday(s){let d=shift(s);while([0,6].includes(D(d).getUTCDay()))d=shift(d);return d;}
 function tick(v){return v<10?.01:v<50?.05:v<100?.1:v<500?.5:v<1000?1:5;}
 function align(v,mode){if(num(v)===null||v<=0)return null;const unit=tick(v),n=v/unit;return r2((mode==='up'?Math.ceil(n-1e-8):Math.floor(n+1e-8))*unit);}
 function extrema(bars,field){const v=bars.map(x=>num(x[field])).filter(x=>x!==null&&x>0);return v.length===bars.length?(field==='l'?Math.min(...v):Math.max(...v)):null;}
 const length=x=>Array.isArray(x)?x.length:0;
-function levels(bars,side,ma20){
+export function computeTradeLevels(bars,side,ma20){
  if(bars.length<60)return null;
  const cur=bars.at(-1);const prev20=bars.slice(-21,-1);const last10=bars.slice(-10),last60=bars.slice(-60);
  const high20=extrema(prev20,'h'),low20=extrema(prev20,'l'),high60=extrema(last60,'h'),low60=extrema(last60,'l');
@@ -67,7 +67,7 @@ function pickCandidate(stock,side,kind,threshold,marketDate){
  const up=side==='bull';
  const ma20=num(r.ma20),ma60=num(r.ma60),rsi=num(r.rsi), macd=num(r.macdHist);
  if([ma20,ma60,rsi,macd].some(x=>x===null))return null;
- const levelsData=levels(bars,side,ma20);if(!levelsData)return null;
+ const levelsData=computeTradeLevels(bars,side,ma20);if(!levelsData)return null;
  let matched=false;
  let reasons=[];
  if(kind==='stable'){
@@ -122,7 +122,7 @@ export function createMorningPlan(store,{generatedAt=new Date().toISOString()}={
    }
    out.bySide[side].combined=[...lists[side].values()]
      .sort((a,b)=>b.matchedStrategies.length-a.matchedStrategies.length||b.bestScore-a.bestScore||a.code.localeCompare(b.code))
-     .slice(0,10);
+     .slice(0,30);
    out.summary.candidates+=lists[side].size;
  }
  return out;
