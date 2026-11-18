@@ -64,27 +64,58 @@ export function parseMargin(payload,market,anchorDate){
  if(out.length<30)throw Error(`${market}融資融券欄位未對應成功／可驗證資料不足 (${out.length})`);
  return out;
 }
-export function parseTxFutures(payload){
+// TX 月合約通常在契約月份的第三個星期三日盤 13:30 終止交易；
+// 如遇交易所另行公告調整到期日需更新規則，不自動造出新月份價格。
+export function txThirdWednesday(month){
+ const m=String(month);
+ if(!/^(20\d{2})(0[1-9]|1[0-2])$/.test(m))return null;
+ const y=Number(m.slice(0,4)),mo=Number(m.slice(4));
+ const first=new Date(Date.UTC(y,mo-1,1)),firstWednesday=1+(3-first.getUTCDay()+7)%7;
+ return new Date(Date.UTC(y,mo-1,firstWednesday+14)).toISOString().slice(0,10);
+}
+export function txExpired(month,asOf=''){
+ const exp=txThirdWednesday(month);if(!exp)return true;
+ const moment=asOf?new Date(asOf):new Date();
+ if(Number.isNaN(moment.getTime()))throw Error('期貨參考時間格式錯誤');
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(moment);
+ const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+ const d=p.year+'-'+p.month+'-'+p.day,min=Number(p.hour)*60+Number(p.minute);
+ return d>exp||(d===exp&&min>=13*60+30);
+}
+export function parseTxFutures(payload,{asOf}={}){
  if(!Array.isArray(payload))throw Error('期交所每日行情非陣列');
  const all=[];
- for(const x of payload){const contract=String(field(x,['Contract','契約','商品代號'])??'').trim().toUpperCase();
- if(contract!=='TX'&&contract!=='TXF')continue;
- const d=isoDate(field(x,['Date','交易日期']));const contractMonth=String(field(x,['ContractMonth(Week)','ContractMonth','契約月份'])??'').trim();
- const session=String(field(x,['TradingSession','交易時段'])??'').trim();
- const close=positive(field(x,['Last','Close','收盤價','最後成交價']));
- if(!d||!/^\d{6}$/.test(contractMonth)||close===null)continue;
- const open=positive(field(x,['Open','開盤價'])),hi=positive(field(x,['High','最高價'])),lo=positive(field(x,['Low','最低價']));
- all.push({d,contract:'TX',contractMonth,session,close,o:open,h:hi,l:lo,settlement:positive(field(x,['SettlementPrice','結算價'])),volume:quantity(field(x,['Volume','成交量'])),openInterest:quantity(field(x,['OpenInterest','未沖銷契約數']))});
+ for(const x of payload){
+  const contract=String(field(x,['Contract','契約','商品代號'])??'').trim().toUpperCase();
+  if(contract!=='TX'&&contract!=='TXF')continue;
+  const d=isoDate(field(x,['Date','交易日期']));
+  const contractMonth=String(field(x,['ContractMonth(Week)','ContractMonth','契約月份'])??'').trim();
+  const session=String(field(x,['TradingSession','交易時段'])??'').trim();
+  const close=positive(field(x,['Last','Close','收盤價','最後成交價']));
+  if(!d||!txThirdWednesday(contractMonth)||close===null)continue;
+  const open=positive(field(x,['Open','開盤價'])),hi=positive(field(x,['High','最高價'])),lo=positive(field(x,['Low','最低價']));
+  all.push({d,contract:'TX',contractMonth,session,close,o:open,h:hi,l:lo,
+   settlement:positive(field(x,['SettlementPrice','結算價'])),
+   volume:quantity(field(x,['Volume','成交量'])),openInterest:quantity(field(x,['OpenInterest','未沖銷契約數']))});
  }
  if(!all.length)throw Error('找不到有效的臺指期 TX 合約行情');
- const date=all.map(x=>x.d).sort().at(-1);const day=all.filter(x=>x.d===date);
- // 自動近月選擇：當日有有效報價的最早 YYYYMM；結算日換月需人工核對。
- const front=day.map(x=>x.contractMonth).sort()[0];
- const near=day.filter(x=>x.contractMonth===front);
- const active=near.find(x=>/一般|日盤|regular|day/i.test(x.session))||near[0];
- const night=near.find(x=>/盤後|夜盤|after|night/i.test(x.session));
- return {date,contract:'TX',contractMonth:front,day:active,night:night||null,source:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut',note:'一般與盤後為不同交易時段；夜盤交易日期歸屬與現貨交易日可能不同；近月換月時不得視為未調整的連續期貨K線。'};
+ const candidateMonths=[...new Set(all.map(x=>x.contractMonth))]
+    .filter(m=>!txExpired(m,asOf)).sort();
+ const front=candidateMonths[0]||null;
+ const sourceDate=all.map(x=>x.d).sort().at(-1);
+ const note='臺指期不同到期月不會拼成連續K線；日盤及夜盤各有交易日。資料為官方最後可取得快照，非即時。';
+ if(!front)return {date:null,sourceDate,contract:'TX',contractMonth:null,day:null,night:null,
+  newSnapshots:all,status:'expired-or-no-valid-contract',note:'尚無尚未到期的有效 TX 合約報價；'+note,
+  source:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut'};
+ const rows=all.filter(x=>x.contractMonth===front).sort((a,b)=>a.d.localeCompare(b.d));
+ const isNight=s=>/盤後|夜盤|after|night/i.test(s||'');
+ const day=[...rows].reverse().find(x=>!isNight(x.session))||null;
+ const night=[...rows].reverse().find(x=>isNight(x.session))||null;
+ return {date:rows.at(-1).d,sourceDate,contract:'TX',contractMonth:front,
+  day,night,newSnapshots:all,status:'ok',expiresOn:txThirdWednesday(front),
+  source:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut',note};
 }
+
 // 月檔優先補齊歷史日期：若舊日快照有可驗證的完整 OHLC，才保留較豐富內容。
 // 避免上一版用舊值無條件覆蓋月資料；尤其不可將舊版以收盤冒充的高低價當真。
 export function mergeIndexMonth(existing,incoming,limit=550){
