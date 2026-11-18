@@ -1,0 +1,25 @@
+name: 官方行情欄位稽核（不修改歷史庫）
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/v0.6.8.2-schedule-tx-rollover]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 檢查語法與全部既有單元測試
+        run: |
+          node --check scripts/market-engine.mjs
+          node --check scripts/update.mjs
+          node --check scripts/margin-daily.mjs
+          npm test
+      - name: 官方欄位及日期探測（唯讀，不進行回補或覆寫）
+        run: node scripts/audit-probe.mjs
