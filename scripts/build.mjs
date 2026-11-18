@@ -1,10 +1,11 @@
-// 股_V0.6.6.1 — 60日初步／250日完整、指數月回補進度與版本同步。
+// 股_V0.6.7 — 加入法人／量價資金動向 10/20/30/60 交易日排名。
 import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {derive,institutionalWindows} from '../engine.mjs';
 import {fibonacci} from './market-engine.mjs';
+import {makeFlowRankings} from './flow-rank.mjs';
 
 export const ROOT=join(dirname(fileURLToPath(import.meta.url)),'..');
 export const STORE=join(ROOT,'store','history.json.gz');
@@ -64,13 +65,13 @@ export async function buildOutput(store){
     if(!s.bars?.length)continue;
     try{
       const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;if(r.scoreMode==='preliminary')preliminaryCount++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
-      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),chips:institutionalWindows(s),marginHistory:(s.marginHistory||[]).slice(-120),fibonacci:{short:fibonacci(s.bars,60),medium:fibonacci(s.bars,120)},warning:'淨買超日加權收盤價不等於外資、投信或主力的真實持股成本。'};
+      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),chips:institutionalWindows(s,[5,10,20,30,60]),marginHistory:(s.marginHistory||[]).slice(-120),fibonacci:{short:fibonacci(s.bars,60),medium:fibonacci(s.bars,120)},warning:'淨買超日加權收盤價不等於外資、投信或主力的真實持股成本。'};
       await writeFile(join(detailDir,encodeURIComponent(s.code)+'.json'),JSON.stringify(detail));
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.6.1',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
-    rows,marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
+  const output={version:'股_V0.6.7',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+    rows,flowRankings:makeFlowRankings(store.stocks,store.markets),marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},

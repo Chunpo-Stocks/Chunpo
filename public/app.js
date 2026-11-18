@@ -8,13 +8,13 @@ const netLots=x=>Number.isFinite(x)?(x>0?'+':'')+fmt(x/1000,0)+' 張':'—';
 const tint=n=>Number(n)>0?'pos':Number(n)<0?'neg':'';
 const dateTime=x=>{if(!x)return'尚未更新';let d=new Date(x);return Number.isNaN(d.valueOf())?'未知':d.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})};
 function toast(msg,isBad=false){$('notice').className='notice'+(isBad?' bad':'');$('notice').textContent=msg;}
-function switchTab(tab){state.tab=tab;Q('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));Q('.page').forEach(x=>x.classList.toggle('hidden',x.id!=='page-'+tab));if(tab==='source')renderSource();if(tab==='macro')renderMacro();}
+function switchTab(tab){state.tab=tab;Q('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));Q('.page').forEach(x=>x.classList.toggle('hidden',x.id!=='page-'+tab));if(tab==='source')renderSource();if(tab==='macro')renderMacro();if(tab==='flow')renderFlow();}
 function setData(data,usingDemo=false){state.data=data;state.usingDemo=usingDemo;
   let mode=$('mode');mode.className='pill '+(usingDemo?'demo':data?.mode==='official'?'ok':'neutral');mode.textContent=usingDemo?'人造示範資料':data?.mode==='official'?'官方盤後資料':'尚無正式資料';
   if(usingDemo)toast('目前顯示人造示範股價，僅供測試篩選介面；不是台股真實行情，更不是盤中即時資料。');
   else if(data?.mode==='official')toast('官方盤後行情：按各市場資料日期顯示；最後重新產生：'+dateTime(data.generatedAt)+'。不是即時價格。');
   else toast('尚未完成中央行情同步。需要站長先啟用排程並建立歷史；可在「資料與說明」切換示範。',true);
-  renderStats();renderTable();if(state.tab==='source')renderSource();if(state.tab==='macro')renderMacro();
+  renderStats();renderTable();if(state.tab==='source')renderSource();if(state.tab==='macro')renderMacro();if(state.tab==='flow')renderFlow();
 }
 function renderStats(){let d=state.data||{},r=d.rows||[],ready=r.filter(x=>x.ready),eligible=r.filter(x=>['full','preliminary'].includes(x.scoreMode)&&x.date===(d.markets?.[x.market]?.date||x.date)),bull=eligible.filter(x=>(x.bull||0)>=45),bear=eligible.filter(x=>(x.bear||0)>=45);const dates=[...new Set(r.map(x=>x.date).filter(Boolean))].sort().reverse();
 const boxes=[['最新資料日',dates[0]||'—',state.usingDemo?'示範日期':'各市場可能有不同交易日'],['追蹤普通股',num(r.length),state.usingDemo?'非實際上市櫃股數':'來源：公開盤後行情'],['年線已建立',num(ready.length),`歷史最多 ${d.stats?.maxHistoryDays||0} 日；完整度 ${r.length?Math.round(ready.length/r.length*100):0}%`],['多／空候選',bull.length+' / '+bear.length,'基準45分，含短期初步；非勝率']];
@@ -25,7 +25,7 @@ function renderTable(){let d=state.data||{},out=state.visible=visibleRows();$('r
   else tb.innerHTML=out.slice(0,250).map(r=>{let pats=(r.pattern||[]).filter(x=>x.side===(state.side==='bull'?'bull':'bear')).slice(0,2),labels=pats.map(x=>`<span class="pat">${esc(x.label)}</span>`).join('')||'<span class="muted">—</span>';return `<tr><td><button class="stock-btn" data-stock="${esc(r.code)}"><span class="name">${esc(r.name)}</span><span class="code">${esc(r.code)} · ${r.scoreMode==='full'?'完整年線':'短期初步'}（${r.days}日）</span></button></td><td>${esc(r.market)}</td><td>${fmt(r.close)}</td><td class="${tint(r.pct)}">${r.pct>0?'+':''}${fmt(r.pct)}%</td><td>${fmt(r.ma240)}</td><td>${fmt(r.rsi,1)}</td><td class="${tint(r.foreignNet5)}">${netLots(r.foreignNet5)}</td><td class="${tint(r.trustNet5)}">${netLots(r.trustNet5)}</td><td>${labels}</td><td class="score ${state.side==='bull'?'pos':'neg'}">${num(r[state.side])}</td></tr>`}).join('');
   $('result-footnote').textContent=out.length>250?'排行榜僅顯示前 250 檔，匯出包含所有符合條件的股票。':'短期初步分數按非年線訊號獨立正規化，不可與完整年線分數直接比較；皆非勝率或投資建議。';
   Q('button[data-stock]').forEach(b=>b.addEventListener('click',()=>openStock(b.dataset.stock)));}
-function exportCsv(){const arr=state.visible;if(!arr.length)return toast('沒有符合條件的資料可匯出。',true);const fields=['code','name','market','date','close','pct','ma20','ma60','ma240','rsi','volRatio','bull','bear','foreignNet','trustNet','institutionDate','foreignRef20','trustRef20','foreignNet5','trustNet5','source','days','scoreMode'];const rows=[fields.join(','),...arr.map(x=>fields.map(k=>'"'+String(x[k]??'').replaceAll('"','""')+'"').join(','))];const blob=new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='股_V0.6.6.1_'+(state.side==='bull'?'多頭':'空頭')+'_'+(state.data.generatedAt||'demo').slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000)}
+function exportCsv(){const arr=state.visible;if(!arr.length)return toast('沒有符合條件的資料可匯出。',true);const fields=['code','name','market','date','close','pct','ma20','ma60','ma240','rsi','volRatio','bull','bear','foreignNet','trustNet','institutionDate','foreignRef20','trustRef20','foreignNet5','trustNet5','source','days','scoreMode'];const rows=[fields.join(','),...arr.map(x=>fields.map(k=>'"'+String(x[k]??'').replaceAll('"','""')+'"').join(','))];const blob=new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='股_V0.6.7_'+(state.side==='bull'?'多頭':'空頭')+'_'+(state.data.generatedAt||'demo').slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000)}
 async function openStock(code){switchTab('detail');$('detail-query').value=code;await detail(code)}
 async function detail(code){const r=(state.data?.rows||[]).find(x=>x.code===code||x.name===code);if(!r){$('detail-content').innerHTML='<div class="empty">找不到此股票，請輸入完整代號或從多空排行選擇。<br>資料庫需要先由中央服務同步官方數據。</div>';return}
   $('detail-content').innerHTML='<div class="empty">正在載入個股歷史與型態資料……</div>';let d;
@@ -92,6 +92,27 @@ function renderMacro(){
  <h3 class="table-title">每日融資／融券籌碼</h3><div class="macro-grid">${marginCard('上市')}${marginCard('上櫃')}</div>
  <p class="warn">${errorStatus?'本次來源異常：'+errorStatus:'每項數據仍需檢查來源與實際日期，首次部署可能尚無歷史。'}</p>`;
 }
+function renderFlow(){
+ const out=$('flow-content'),meta=$('flow-status'),days=Number($('flow-window').value),direction=$('flow-direction').value;
+ const whole=state.data?.flowRankings||null,d=whole?.byPeriod?.[days];
+ if(!d){meta.textContent=`${days} 日排行榜尚未建立。需先讓 GitHub Actions 重新計算並發布股_V0.6.7；本機示範資料不等於正式行情。`;out.innerHTML='<div class="empty">尚無經驗證的法人／量價排行，請查看資料與說明。</div>';return;}
+ meta.textContent=`區間：${days} 交易日；上市 ${d.marketDates?.['上市']||'未確認'} ／上櫃 ${d.marketDates?.['上櫃']||'未確認'}；具足夠股價歷史 ${num(d.stocksWithPeriod)} 檔。`;
+ const categories=[['foreign','外資淨買賣超 Top 10'],['trust','投信淨買賣超 Top 10'],['activity','量價主力動向觀察 Top 10（代理指標）']];
+ out.innerHTML=categories.map(([key,title])=>{
+   const entry=d[key]||{},rows=entry[direction]||[],isProxy=key==='activity';
+   const label=isProxy?(direction==='buy'?'偏多代理分數':'偏空代理分數'):(direction==='buy'?'淨買超（張）':'淨賣超（張）');
+   const body=rows.slice(0,10).map((r,i)=>{
+     const v=isProxy?r.activity?.[direction==='buy'?'buyScore':'sellScore']:r[key]?.netShares;
+     const display=isProxy?`${num(v)}/100`:netLots(v);
+     const more=isProxy?`量比 ${fmt(r.activity?.relVolume,2)} · 區間 ${fmt(r.activity?.periodReturnPct,1)}%`:
+       `已涵蓋 ${num(r[key]?.observedDays)}/${days} 日 · ${r[key]?.latestInstitutionDate||'未知日'}`;
+     return `<tr><td>${i+1}</td><td><button class="stock-btn" data-stock="${esc(r.code)}"><span class="name">${esc(r.name)}</span><span class="code">${esc(r.code)} · ${esc(r.market)}</span></button></td><td class="${isProxy?'':tint(v)}">${display}</td><td class="muted">${esc(more)}</td></tr>`;
+   }).join('');
+   return `<article class="flow-card"><h3>${title}</h3><div class="small muted">符合統計完整度 ${num(entry.eligible||0)} 檔，資料不足或過期 ${num(entry.insufficient||0)} 檔。依本次所選 ${days} 日重新排序。</div><div class="tablewrap"><table class="flow-table"><thead><tr><th>名次</th><th>股票</th><th>${label}</th><th>資料／參考</th></tr></thead><tbody>${body||'<tr><td colspan="4"><div class="empty">此區間無有效候選（可能是法人資料不足、非最新日或沒有買／賣超）。</div></td></tr>'}</tbody></table></div></article>`;
+ }).join('');
+ Q('#page-flow button[data-stock]').forEach(b=>b.addEventListener('click',()=>openStock(b.dataset.stock)));
+}
+
 function renderChips(d){
   const chip=d.chips||{},wins=chip.windows||[],win=n=>wins.find(x=>x.period===n);
   const netCard=(period,kind,title)=>{const z=win(period)?.categories?.[kind];const has=Boolean(z?.covered);
@@ -121,7 +142,7 @@ function renderChart(bars){let svg=$('price-chart');if(!svg)return;if(bars.lengt
 function renderSource(){let d=state.data||{},ms=d.markets||{},html=`<div class="source-card"><strong>資料模式</strong><p>${state.usingDemo?'人造測試資料，非台股行情':d.mode==='official'?'官方盤後匯總資料':'尚未有正式行情資料'}</p><p>資料更新工作時間：${esc(dateTime(d.generatedAt))}</p><p>歷史回補游標：${esc(d.backfill?.cursor||'尚未開始')}（每次逐批回補，並非每日重做）</p><p>目前個股最多累積 ${num(d.stats?.maxHistoryDays??0)} 個交易日；MA20 可計算 ${num(d.stats?.with20??0)} 檔、MA60 可計算 ${num(d.stats?.with60??0)} 檔；短期初步觀察 ${num(d.stats?.preliminaryReady??0)} 檔。</p><p>最近一批回補：成功 ${num(d.backfill?.lastBatch?.completedTradingDays??0)} 日、略過休市/週末 ${num(d.backfill?.lastBatch?.skippedDays??0)} 日，${d.backfill?.lastBatch?.failedDate?'卡在 '+esc(d.backfill.lastBatch.failedDate):'未回報失敗日期'}。</p><p>法人歷史補建：本次掃描 ${num(d.chipsBackfill?.lastBatch?.scannedDays??0)} 日、成功 ${num(d.chipsBackfill?.lastBatch?.successfulMarketDays??0)} 個市場交易日、失敗 ${num(d.chipsBackfill?.lastBatch?.failedMarketDays??0)} 次；待重試 ${num(d.chipsBackfill?.lastBatch?.pendingRetries??0)} 次。</p></div>`;
  const rb=d.marketData?.indexBackfillLastBatch?.markets;
  if(rb){const text=['taiex','otc'].map(k=>`${k==='taiex'?'加權':'OTC'}：${num(rb[k]?.before||0)} → ${num(rb[k]?.after||0)} 日（本次成功月數 ${num(rb[k]?.ok||0)}、失敗月數 ${num(rb[k]?.failed||0)}）`).join('；');
- html+=`<div class="source-card"><strong>股_V0.6.6.1 指數月資料回補</strong><p>${esc(text)}</p><p>若官方資料抓取失敗，會在下方列出原因，不以虛構指數補齊。</p></div>`}
+ html+=`<div class="source-card"><strong>股_V0.6.7 指數月資料回補</strong><p>${esc(text)}</p><p>若官方資料抓取失敗，會在下方列出原因，不以虛構指數補齊。</p></div>`}
  for(const m of ['上市','上櫃']){let o=ms[m]||{};html+=`<div class="source-card"><strong>${m}市場</strong><p>交易日：${esc(o.date||'尚無')}｜普通股：${num(o.count??null)}｜狀態：${esc(o.status||'未連接')}｜法人日：${esc(o.institutionDate||'尚無')}</p></div>`}
  for(const s of d.sources||[]){if(/^https:\/\//.test(s.url))html+=`<div class="source-card"><strong>${esc(s.name)}</strong><p><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.url)}</a></p></div>`}
  if(d.errors?.length)html+='<div class="source-card"><strong>最近取數錯誤</strong><ul class="rules">'+d.errors.map(e=>`<li>${esc(e)}</li>`).join('')+'</ul></div>';
@@ -134,6 +155,7 @@ $('reload').addEventListener('click',load);$('csv').addEventListener('click',exp
 $('detail-go').addEventListener('click',()=>detail($('detail-query').value.trim()));$('detail-query').addEventListener('keydown',e=>{if(e.key==='Enter')detail(e.target.value.trim())});
 $('intraday-ranking').addEventListener('click',()=>switchTab('ranking'));
 $('macro-window').addEventListener('change',renderMacro);
+for(const id of ['flow-window','flow-direction'])$(id).addEventListener('change',renderFlow);
 $('demo-toggle').addEventListener('click',()=>{if(state.usingDemo){if(state.official)setData(state.official,false);else load()}else setData(window.__DEMO__,true);renderSource()});
 if('serviceWorker'in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
 load();
