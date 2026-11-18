@@ -1,0 +1,54 @@
+name: 股 V0.6 每日盤後更新與發布
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: '本次最多回補多少日曆天（0～120，首批建議 100）'
+        required: true
+        default: '100'
+  schedule:
+    # Asia/Taipei = UTC+8: 17:45 / 20:30, Monday-Friday.
+    - cron: '45 9 * * 1-5'
+    - cron: '30 12 * * 1-5'
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: stock-v06-deploy
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 執行資料規則測試
+        run: npm test
+      - name: 向官方取數、更新中央歷史、重新產生靜態網頁資料
+        env:
+          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '30' }}
+        run: node scripts/update.mjs --backfill-days="$BACKFILL_DAYS"
+      - name: 保存唯一歷史資料庫（不把個股細節兩千個檔案每天重複提交）
+        run: |
+          git config user.name 'stock-data-bot'
+          git config user.email 'stock-data-bot@users.noreply.github.com'
+          git add store/history.json.gz
+          if ! git diff --cached --quiet; then
+            git commit -m '盤後更新與歷史回補'
+            git push
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+      - name: 部署 GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
