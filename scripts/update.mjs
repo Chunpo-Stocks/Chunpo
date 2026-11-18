@@ -95,12 +95,17 @@ async function pullMarket(name,fn){
 }
 await pullMarket('taiex',payload=>{const rows=parseTwseIndex(payload);store.marketData.indices.taiex=mergeDaily(store.marketData.indices.taiex,rows);return `${rows.length}日`});
 await pullMarket('otc',payload=>{const rows=parseTpexIndex(payload);store.marketData.indices.otc=mergeDaily(store.marketData.indices.otc,rows);return `${rows.length}日`});
-await pullMarket('tx',payload=>{const row=parseTxFutures(payload);const previous=store.marketData.futures||{};
-  const key=x=>`${x.d}/${x.contractMonth}/${x.session}`;
-  const all=[...(previous.snapshots||[]),row.day,...(row.night?[row.night]:[])];
-  const uniq=new Map(all.filter(Boolean).map(x=>[key(x),x]));
-  store.marketData.futures={...row,snapshots:[...uniq.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-450)};
-  return `${row.date} ${row.contractMonth} ${row.day.session}`});
+await pullMarket('tx',payload=>{const row=parseTxFutures(payload,{asOf:new Date()});const previous=store.marketData.futures||{};
+ const key=x=>`${x.d}/${x.contractMonth}/${x.session}`;
+ // 逐契約、逐交易日、逐時段存下快照；更換近月時不拼接不同到期月份。
+ const all=[...(previous.snapshots||[]),...(row.newSnapshots||[])];
+ const uniq=new Map(all.filter(Boolean).map(x=>[key(x),x]));
+ const {newSnapshots,...current}=row;
+ store.marketData.futures={...current,snapshots:[...uniq.values()].sort((a,b)=>a.d.localeCompare(b.d)||a.contractMonth.localeCompare(b.contractMonth)).slice(-450),
+  checkedAt:new Date().toISOString()};
+ if(!row.contractMonth||!row.day&&!row.night)throw Error('本次 TX 有行情，但全部合約已到期或有效近月缺少成交價，已停止顯示舊合約');
+ console.log('臺指期換月檢核',row.contractMonth,'契約最後交易日',row.expiresOn,'來源交易日',row.sourceDate,'選用日盤',row.day?.d||'無','夜盤',row.night?.d||'無');
+ return `${row.contractMonth} 日盤:${row.day?.d||'無'} 夜盤:${row.night?.d||'無'}`});
 // 正式月資料回補（加權收盤／OTC OHLC），首批最近 8 個月，合併保留舊資料。
 // 有效日數不足時仍不冒充日內高低；期貨不同契約不拼接。
 function recentMonths(count=6){const now=todayTaipei().slice(0,7),[yr,mo]=now.split('-').map(Number);
