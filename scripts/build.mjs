@@ -3,7 +3,7 @@ import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {derive,netBuyReference} from '../engine.mjs';
+import {derive,institutionalWindows} from '../engine.mjs';
 
 export const ROOT=join(dirname(fileURLToPath(import.meta.url)),'..');
 export const STORE=join(ROOT,'store','history.json.gz');
@@ -30,6 +30,7 @@ const fix=n=>Number.isFinite(n)?Math.round(n*1e5)/1e5:null;
 export function summary(s){const d=derive(s);if(!d)return null;
   const institutions=s.institutions.filter(x=>x.d<=d.date).sort((a,b)=>b.d.localeCompare(a.d));
   const latest=institutions[0]||null;
+  const chips=institutionalWindows(s);
   // 年線訊號合計 28 分；當年線不足時只按其餘 72 分條件獨立正規化。
   // 短期分數不與完整年線分數直接比較；每筆都有 scoreMode 與 days 標籤。
   const complete=d.days>=250, preliminary=d.days>=60 && !complete;
@@ -41,7 +42,8 @@ export function summary(s){const d=derive(s);if(!d)return null;
     ma20:fix(d.ma[20]),ma60:fix(d.ma[60]),ma240:fix(d.ma[240]),yearSlope:fix(d.ma240slope),rsi:fix(d.rsi),volRatio:fix(d.volRatio),
     macdHist:fix(d.macd.hist),pattern:d.patterns.map(p=>({id:p.id,label:p.label,side:p.side,reason:p.reason})),
     foreignNet:latest?.foreign??null,trustNet:latest?.trust??null,institutionDate:latest?.d??null,
-    foreignRef20:fix(netBuyReference(s,'foreign',20).estimate),trustRef20:fix(netBuyReference(s,'trust',20).estimate),
+    foreignRef20:fix(chips.windows.find(x=>x.period===20)?.categories.foreign.netBuyCloseReference),trustRef20:fix(chips.windows.find(x=>x.period===20)?.categories.trust.netBuyCloseReference),
+    foreignNet5:chips.windows.find(x=>x.period===5)?.categories.foreign.netShares??null,trustNet5:chips.windows.find(x=>x.period===5)?.categories.trust.netShares??null,
     source:s.bars.at(-1)?.source||null,ready:d.days>=250};
 }
 export async function buildOutput(store){
@@ -52,18 +54,21 @@ export async function buildOutput(store){
     if(!s.bars?.length)continue;
     try{
       const r=summary(s);if(!r)continue;rows.push(r);if(r.ready)ready++;if(r.scoreMode==='preliminary')preliminaryCount++;maxDays=Math.max(maxDays,r.days);if(r.days>=20)with20++;if(r.days>=60)with60++;
-      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),warning:'買超日加權參考價並非外資、投信真實持股成本。'};
+      const detail={...r,bars:s.bars.slice(-410),institutions:s.institutions.slice(-90),chips:institutionalWindows(s),warning:'淨買超日加權收盤價不等於外資、投信或主力的真實持股成本。'};
       await writeFile(join(detailDir,encodeURIComponent(s.code)+'.json'),JSON.stringify(detail));
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.2',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+  const output={version:'股_V0.6.3',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
     rows,stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},
       {name:'證交所三大法人',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
-      {name:'櫃買中心三大法人',url:'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading'}],
+      {name:'櫃買中心三大法人',url:'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading'},
+      {name:'上市歷史法人買賣超（T86）',url:'https://www.twse.com.tw/rwd/zh/fund/T86'},
+      {name:'上櫃歷史法人買賣超（dailyTrade）',url:'https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade'}],
     backfill:{cursor:store.backfillCursor,complete:store.backfillComplete,lastBatch:store.backfillLastBatch||null},
+    chipsBackfill:{cursor:store.chipsBackfillCursor||null,lastBatch:store.chipsBackfillLastBatch||null},
     errors:store.errors.slice(-12),
     message:ready===0?'尚未建立 MA240 完整年線；如已有至少 60 個交易日資料，可使用明確標示的短期初步觀察。':null};
   await writeFile(join(root,'index.json'),JSON.stringify(output));

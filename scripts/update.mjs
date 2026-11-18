@@ -1,6 +1,6 @@
-// 股_V0.6.2 — 保留回補游標，跳過經驗證休市日，遇資料錯誤不跳過交易日。
+// 股_V0.6.3 — 盤後行情、股價歷史及獨立的法人歷史回補。
 import {loadStore,saveStore,addBar,addInstitution,buildOutput} from './build.mjs';
-import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst} from '../engine.mjs';
+import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst,parseTpexInstHistory,isoDate} from '../engine.mjs';
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';
 const nap=ms=>new Promise(r=>setTimeout(r,ms));
 const todayTaipei=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -8,6 +8,8 @@ const dayShift=(s,n)=>new Date(Date.parse(s+'T00:00:00Z')+n*86400000).toISOStrin
 const weekday=s=>{let x=new Date(s+'T00:00:00Z').getUTCDay();return x!==0&&x!==6};
 const args=process.argv.slice(2);const chosen=Number(args.find(s=>s.startsWith('--backfill-days='))?.split('=')[1]??'30');
 if(!Number.isInteger(chosen)||chosen<0||chosen>120)throw Error('--backfill-days 需為 0～120 個日曆天');
+const chipDays=Number(args.find(s=>s.startsWith('--chip-days='))?.split('=')[1]??'10');
+if(!Number.isInteger(chipDays)||chipDays<0||chipDays>30)throw Error('--chip-days 需為 0～30 個有股價資料的交易日');
 const store=await loadStore();const errors=[];let changed=false;
 const headers={'User-Agent':'Stock-V0.6-Friendly-Research/0.6 (+Public-data; no-trading)','Accept':'application/json,text/plain,*/*'};
 async function json(url,{tries=2}={}){
@@ -75,6 +77,58 @@ for(let i=0;i<chosen;i++){
   }
   if(fail){failedDate=cursor;errors.push(fail);console.error('::warning::歷史回補中斷：'+fail);break}
 }
+// 法人歷史獨立回補：避免只有最新1日法人數據卻聲稱20/60日成本。
+// 只掃已有盤後股價的真實交易日期；單邊失敗仍允許另一邊補入，失敗日加入待重試佇列。
+let chipProcessed=0,chipPairs=0,chipErrors=[];
+const availableDays=new Map();
+for(const st of Object.values(store.stocks))for(const b of st.bars||[])availableDays.set(b.d,(availableDays.get(b.d)||0)+1);
+const knownDays=[...availableDays.entries()].filter(([d,count])=>count>=40&&d<=todayTaipei()).map(([d])=>d).sort().reverse();
+let chipsCursor=store.chipsBackfillCursor||knownDays[0]||null;
+const pending=Array.isArray(store.chipsBackfillPending)?store.chipsBackfillPending:[];
+const tasks=[];
+for(const e of pending.slice(0,Math.min(4,chipDays)))if(!tasks.some(x=>x.date===e.date))tasks.push({date:e.date,retry:e.market});
+for(const d of knownDays.filter(d=>d<=(chipsCursor||'9999-99-99'))){
+  if(tasks.length>=chipDays)break;
+  if(!tasks.some(x=>x.date===d))tasks.push({date:d,retry:null});
+}
+function isoOrNone(x){return isoDate(x)||null}
+async function grabChipDay(market,d){
+  const url=market==='上市'?SOURCES.twseInst.replace('{date}',d.replaceAll('-','')):
+    SOURCES.tpexInstHistory.replace('{date}',`${Number(d.slice(0,4))-1911}%2F${d.slice(5,7)}%2F${d.slice(8,10)}`);
+  const payload=await json(url);
+  if(isoOrNone(payload?.date)&&isoOrNone(payload.date)!==d)throw Error('法人資料日期不符：'+payload.date);
+  const rows=market==='上市'?parseTwseInst(payload,d):parseTpexInstHistory(payload,d);
+  const present=rows.filter(x=>store.stocks[x.code]?.bars?.some(b=>b.d===d));
+  if(present.length<30)throw Error('該日期可對上股價的法人筆數過少：'+present.length);
+  for(const row of present)addInstitution(store,row);
+  return present.length;
+}
+if(chipDays){
+  for(const job of tasks){
+    const d=job.date;const markets=job.retry?[job.retry]:['上市','上櫃'];
+    chipProcessed++;
+    for(const market of markets){
+      try{
+        const rows=await grabChipDay(market,d); chipPairs++;
+        const index=pending.findIndex(x=>x.date===d&&x.market===market);if(index>=0)pending.splice(index,1);
+        if(chipProcessed<=3||chipProcessed%10===0)console.log('法人歷史已補',d,market,rows,'筆');
+      }catch(err){
+        chipErrors.push(`${d} ${market}法人歷史：${err.message}`);
+        if(!pending.some(x=>x.date===d&&x.market===market))pending.push({date:d,market});
+        console.warn('::warning::法人資料缺漏，留待下次重試',chipErrors.at(-1));
+      }
+      await nap(600);
+    }
+    if(!job.retry){chipsCursor=dayShift(d,-1);changed=true;}
+  }
+}
+store.chipsBackfillCursor=chipsCursor;
+store.chipsBackfillPending=pending.slice(0,120);
+store.chipsBackfillLastBatch={at:new Date().toISOString(),requested:chipDays,scannedDays:chipProcessed,successfulMarketDays:chipPairs,
+  failedMarketDays:chipErrors.length,pendingRetries:pending.length,examples:chipErrors.slice(0,5),cursor:chipsCursor};
+errors.push(...chipErrors.slice(0,10));
+console.log('法人歷史回補',chipProcessed,'日、成功市場次數',chipPairs,'、失敗市場次數',chipErrors.length,'、待重試',pending.length);
+
 store.backfillCursor=cursor;
 // 避免因游標跨過某個日期就直接宣稱完整；由每檔實際交易日數決定是否能評分。
 store.backfillComplete=false;

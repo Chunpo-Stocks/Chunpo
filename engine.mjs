@@ -184,3 +184,40 @@ export function parseTpexInstHistory(payload,date){
   }
   return out;
 }
+
+
+// 股_V0.6.3 法人籌碼：僅使用可驗證「日期＋買賣超股數」的資料。
+// 所有參考價皆為淨買超日的收盤價加權觀測值，不是法人實際交易成本/餘額成本。
+export function institutionalWindows(stock, periods=[5,20,60]) {
+  const bars=(stock?.bars||[]).filter(b=>b?.d&&Number.isFinite(b.c)).slice().sort((a,b)=>b.d.localeCompare(a.d));
+  const inst=new Map((stock?.institutions||[]).filter(x=>x?.d).map(x=>[x.d,x]));
+  const kinds=['foreign','trust','dealer'];
+  const details=periods.map(period=>{
+    const dates=bars.slice(0,period);
+    const sufficientHistory=dates.length===period;
+    const categories={};
+    for(const kind of kinds){
+      let valid=0,buyDays=0,net=0,weight=0,buyShares=0,positiveDays=0,negativeDays=0;
+      for(const b of dates){const n=inst.get(b.d)?.[kind];if(!Number.isFinite(n))continue;
+        valid++;net+=n;
+        if(n>0){buyDays++;positiveDays++;weight+=n*b.c;buyShares+=n}else if(n<0)negativeDays++;
+      }
+      const coverage=sufficientHistory&&valid>=Math.ceil(period*.8);
+      categories[kind]={period,validDays:valid,expectedDays:period,covered:coverage,
+        netShares:coverage?net:null,
+        buyDays,positiveDays,negativeDays,
+        netBuyCloseReference:coverage&&buyDays>=2&&buyShares>0?weight/buyShares:null,
+        priceReferenceMethod:'僅對淨買超日期，以當日收盤價按淨買超股數加權；不是實際買進成本'};
+    }
+    return {period,startDate:dates.at(-1)?.d??null,endDate:dates[0]?.d??null,historyReady:sufficientHistory,categories};
+  });
+  const daily=bars.slice(0,30).map(b=>{const x=inst.get(b.d);return {date:b.d,close:b.c,
+    foreign:Number.isFinite(x?.foreign)?x.foreign:null,
+    trust:Number.isFinite(x?.trust)?x.trust:null,
+    dealer:Number.isFinite(x?.dealer)?x.dealer:null,
+    source:x?.source??null};});
+  const latestVerified=daily.find(x=>x.foreign!==null||x.trust!==null||x.dealer!==null)||null;
+  return {windows:details,daily,latestDate:latestVerified?.date??null,
+    units:'股（頁面以張換算：1張=1000股）',
+    disclaimer:'法人買賣超不代表實際剩餘持股；買超日收盤價加權參考值，不是實際成交價或持股成本。券商分點不等於單一主力，無授權分點資料就不顯示主力成本。'};
+}
