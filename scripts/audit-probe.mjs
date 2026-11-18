@@ -1,3 +1,5 @@
+import {parseTwseInst} from '../engine.mjs';
+import {parseTwseMarginDaily} from './margin-daily.mjs';
 // 官方資料來源結構稽核：只輸出公開欄位名稱、筆數、資料日期及少量必要驗證統計。
 // 不更動歷史資料、不寫入價格、不印出任何私密資訊。
 const sources=[
@@ -24,6 +26,14 @@ for(const [name,url] of sources){
   if(name==='tpexMargin')info.sample=first?Object.fromEntries(Object.entries(first).filter(([k])=>/Date|Margin|Short|Code/i.test(k)).slice(0,15)):null;
   if(name==='tpexInst')info.sample=first?Object.fromEntries(Object.entries(first).filter(([k])=>/Deal|Difference|Date/i.test(k)).slice(0,16)):null;
   if(name==='tx')info.sample=rows.filter(x=>String(x.Contract??'').toUpperCase()==='TX').slice(0,8).map(x=>({Date:x.Date,Contract:x.Contract,Month:x['ContractMonth(Week)']??x.ContractMonth,Session:x.TradingSession,Last:x.Last,Close:x.Close}));
+  if(name==='twseInst') {
+    const parsed=parseTwseInst(d,'2026-11-18');
+    info.parserCheck={rows:parsed.length,dealerNonzero:parsed.filter(x=>x.dealer!==0&&x.dealer!==null).length,dealerZeros:parsed.filter(x=>x.dealer===0).length};
+  }
+  if(name==='twseMarginDaily') {
+    const parsed=parseTwseMarginDaily(d,'2026-11-18');
+    info.parserCheck={rows:parsed.length,firstDate:parsed[0]?.d,firstMargin:parsed[0]?.margin,firstShort:parsed[0]?.short};
+  }
   console.log('OFFICIAL_PROBE '+JSON.stringify(info));
  }catch(e){console.log('OFFICIAL_PROBE '+JSON.stringify({source:name,error:String(e)}))}
 }
