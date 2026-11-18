@@ -1,5 +1,14 @@
 name: 股 V0.6.8 盤後更新與07:00交易計畫發布
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'public/index.html'
+      - 'public/morning.js'
+      - 'public/styles.css'
+      - 'public/sw.js'
+      - '.github/workflows/publish.yml'
   workflow_dispatch:
     inputs:
       backfill_days:
