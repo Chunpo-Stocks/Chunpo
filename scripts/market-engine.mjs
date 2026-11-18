@@ -1,4 +1,4 @@
-// 股_V0.6.5 市場與斐波核心：只處理已核實的日期和有效數值，不自行造行情。
+// 股_V0.6.6.1 市場與斐波核心：修正官方月歷史、欄位核對與合併優先順序。
 import {isoDate,num,pick,ordinary} from '../engine.mjs';
 const round=x=>Number.isFinite(x)?Math.round(x*1e3)/1e3:null;
 const normalize=x=>String(x??'').replace(/[\s()（）\-_:：]/g,'').trim().toLowerCase();
@@ -35,14 +35,14 @@ export function parseTwseIndex(payload){
  const rows=payload.map(x=>({d:isoDate(field(x,['Date','日期','交易日期'])),o:positive(field(x,['OpeningIndex','開盤指數','開盤'])),h:positive(field(x,['HighestIndex','最高指數','最高'])),l:positive(field(x,['LowestIndex','最低指數','最低'])),c:positive(field(x,['ClosingIndex','收盤指數','收盤']))}))
  .filter(x=>x.d&&x.c!==null);
  if(!rows.length)throw Error('加權指數欄位與來源格式不符（不得以個股或估算冒充）');
- return rows.sort((a,b)=>a.d.localeCompare(b.d)).map(x=>({d:x.d,o:x.o??x.c,h:x.h??x.c,l:x.l??x.c,c:x.c}));
+ return rows.sort((a,b)=>a.d.localeCompare(b.d)).map(x=>({...x,priceBasis:[x.o,x.h,x.l].every(Number.isFinite)?'highlow':'close'}));
 }
 export function parseTpexIndex(payload){
  if(!Array.isArray(payload))throw Error('櫃買指數非陣列');
  const rows=payload.map(x=>({d:isoDate(field(x,['Date','日期','TradingDate'])),o:positive(field(x,['Open','OpeningIndex','開盤指數'])),h:positive(field(x,['High','HighestIndex','最高指數'])),l:positive(field(x,['Low','LowestIndex','最低指數'])),c:positive(field(x,['Close','ClosingIndex','收盤指數']))}))
  .filter(x=>x.d&&x.c!==null);
  if(!rows.length)throw Error('櫃買指數欄位與來源格式不符');
- return rows.sort((a,b)=>a.d.localeCompare(b.d)).map(x=>({d:x.d,o:x.o??x.c,h:x.h??x.c,l:x.l??x.c,c:x.c}));
+ return rows.sort((a,b)=>a.d.localeCompare(b.d)).map(x=>({...x,priceBasis:[x.o,x.h,x.l].every(Number.isFinite)?'highlow':'close'}));
 }
 // OpenAPI 以最新快照為主。若無來源日期則標記 inferred，不冒充官方日別已核實。
 export function parseMargin(payload,market,anchorDate){
@@ -85,6 +85,22 @@ export function parseTxFutures(payload){
  const night=near.find(x=>/盤後|夜盤|after|night/i.test(x.session));
  return {date,contract:'TX',contractMonth:front,day:active,night:night||null,source:'https://openapi.taifex.com.tw/v1/DailyMarketReportFut',note:'一般與盤後為不同交易時段；夜盤交易日期歸屬與現貨交易日可能不同；近月換月時不得視為未調整的連續期貨K線。'};
 }
+// 月檔優先補齊歷史日期：若舊日快照有可驗證的完整 OHLC，才保留較豐富內容。
+// 避免上一版用舊值無條件覆蓋月資料；尤其不可將舊版以收盤冒充的高低價當真。
+export function mergeIndexMonth(existing,incoming,limit=550){
+ const usable=x=>[x?.o,x?.h,x?.l,x?.c].every(Number.isFinite)&&x.h>=x.l;
+ const realOHLC=x=>usable(x)&&x.priceBasis==='highlow';
+ const oldArr=(existing||[]).filter(x=>x?.d),map=new Map(oldArr.map(x=>[x.d,x]));
+ for(const item of (incoming||[])){
+   if(!item?.d)continue;
+   const old=map.get(item.d);
+   if(!old){map.set(item.d,item);continue;}
+   if(realOHLC(old)&&!realOHLC(item))continue;
+   if(realOHLC(old)&&realOHLC(item)){map.set(item.d,item);continue;}
+   map.set(item.d,item); // 有效的官方月份資料覆蓋舊版不完整／偽 OHLC 快照
+ }
+ return [...map.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-limit);
+}
 export function mergeDaily(existing,incoming,limit=550){const map=new Map((existing||[]).filter(x=>x&&x.d).map(x=>[x.d,x]));
  for(const x of incoming||[])if(x?.d)map.set(x.d,x);
  return [...map.values()].sort((a,b)=>a.d.localeCompare(b.d)).slice(-limit);
@@ -115,11 +131,18 @@ export function parseTwseIndexMonth(payload,monthKey){
  return rows.sort((a,b)=>a.d.localeCompare(b.d));
 }
 export function parseTpexIndexMonth(payload,monthKey){
- if(payload?.stat!=='ok')throw Error('TPEx indexInfo/inx 月資料狀態非 ok');
- const t=payload.tables?.[0];const fields=['日期','開市','最高','最低','收市','漲/跌'];
- if(!t||!Array.isArray(t.fields)||fields.some((x,i)=>t.fields[i]!==x)||!Array.isArray(t.data))throw Error('TPEx 指數歷史欄位格式異動');
- const rows=t.data.map(row=>({d:isoDate(row?.[0]),o:positive(row?.[1]),h:positive(row?.[2]),l:positive(row?.[3]),c:positive(row?.[4])}))
-  .filter(x=>x.d?.startsWith(monthKey+'-')&&[x.o,x.h,x.l,x.c].every(Number.isFinite)&&x.h>=x.l&&x.c<=x.h&&x.c>=x.l);
- if(!rows.length)throw Error('TPEx 指數該月無有效交易日');
+ if(String(payload?.stat||'').toLowerCase()!=='ok')throw Error('TPEx 指數月資料非有效官方回應');
+ const tables=Array.isArray(payload.tables)?payload.tables:[];
+ const required=[['日期'],['開市','開盤'],['最高'],['最低'],['收市','收盤']];
+ const matched=tables.map(t=>{
+   const f=(t?.fields||[]).map(normalize);
+   const idx=required.map(names=>f.findIndex(x=>names.some(y=>x===normalize(y))));
+   return {t,idx};
+ }).find(x=>Array.isArray(x.t?.data)&&x.idx.every(i=>i>=0));
+ if(!matched)throw Error('TPEx 指數歷史缺少日期／開高低收欄位');
+ const {t,idx}=matched;
+ const rows=t.data.map(row=>({d:isoDate(row?.[idx[0]]),o:positive(row?.[idx[1]]),h:positive(row?.[idx[2]]),l:positive(row?.[idx[3]]),c:positive(row?.[idx[4]]),priceBasis:'highlow'}))
+  .filter(x=>x.d?.startsWith(monthKey+'-')&&[x.o,x.h,x.l,x.c].every(Number.isFinite)&&x.h>=x.l&&x.o>=x.l&&x.o<=x.h&&x.c>=x.l&&x.c<=x.h);
+ if(!rows.length)throw Error('TPEx 指數該月無有效交易日，或回傳資料與查詢月份不符');
  return rows.sort((a,b)=>a.d.localeCompare(b.d));
 }

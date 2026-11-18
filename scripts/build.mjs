@@ -1,4 +1,4 @@
-// 股_V0.6.2 — 60日短期初步分析與250日完整年線分層。
+// 股_V0.6.6.1 — 60日初步／250日完整、指數月回補進度與版本同步。
 import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {join, dirname} from 'node:path';
@@ -54,7 +54,7 @@ function prepareMarketData(data){
  const one=code=>{const bars=slices(idx[code]);return {code,bars,latest:bars.at(-1)||null,fib20:bars.length>=20?fibonacci(bars,20):null,fib60:bars.length>=60?fibonacci(bars,60):null,fib120:bars.length>=120?fibonacci(bars,120):null};};
  return {indices:{taiex:one('taiex'),otc:one('otc')},
   futures:d.futures?{...d.futures,snapshots:slices(d.futures.snapshots)}:null,
-  margin:{上市:slices(margin['上市']),上櫃:slices(margin['上櫃'])},sourceStatus:d.sourceStatus||{}};
+  margin:{上市:slices(margin['上市']),上櫃:slices(margin['上櫃'])},sourceStatus:d.sourceStatus||{},indexBackfillLastBatch:d.indexBackfillLastBatch||null};
 }
 export async function buildOutput(store){
   const root=join(ROOT,'public','data');const detailDir=join(root,'stocks');
@@ -69,7 +69,7 @@ export async function buildOutput(store){
     }catch(e){failed++;console.error('分析失敗',s.code,e.message);}
   }
   rows.sort((a,b)=>a.code.localeCompare(b.code));
-  const output={version:'股_V0.6.6',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
+  const output={version:'股_V0.6.6.1',mode:rows.length?'official':'empty',generatedAt:new Date().toISOString(),markets:store.markets,
     rows,marketData:prepareMarketData(store.marketData),stats:{tracked:rows.length,yearlineReady:ready,preliminaryReady:preliminaryCount,analysisErrors:failed,maxHistoryDays:maxDays,with20,with60},
     sources:[{name:'證交所股票盤後行情',url:'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'},
       {name:'櫃買中心上櫃盤後行情',url:'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'},

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fibonacci,parseTwseIndex,parseTpexIndex,parseTxFutures,parseMargin,mergeDaily,summarizeMargin,parseTwseIndexMonth,parseTpexIndexMonth} from '../scripts/market-engine.mjs';
+import {fibonacci,parseTwseIndex,parseTpexIndex,parseTxFutures,parseMargin,mergeDaily,summarizeMargin,parseTwseIndexMonth,parseTpexIndexMonth,mergeIndexMonth} from '../scripts/market-engine.mjs';
 const days=Array.from({length:120},(_,i)=>({d:new Date(Date.UTC(2026,0,1+i)).toISOString().slice(0,10),o:90+i/2,h:95+i/2,l:85+i/2,c:90+i/2,v:10000}));
 test('斐波以可追溯高低點計算回撤延伸，不宣稱預測轉折',()=>{
  const f=fibonacci(days,60);assert.ok(f);assert.equal(f.window,60);assert.equal(f.high,154.5);assert.equal(f.low,115);assert.equal(f.direction,'up');
@@ -52,4 +52,20 @@ test('股_V0.6.6 OTC 官方融資融券欄位與前一日餘額可直接算出�
  const rows=Array.from({length:31},(_,i)=>({SecuritiesCompanyCode:String(6001+i),Date:'20261118',MarginPurchaseBalance:'110',ShortSaleBalance:'24',MarginPurchaseBalancePreviousDay:'100',ShortSaleBalancePreviousDay:'20'}));
  const out=parseMargin(rows,'上櫃','2026-11-18');assert.equal(out.length,31);
  const sum=summarizeMargin(out,null);assert.equal(sum.changeMargin,310);assert.equal(sum.changeShort,124);
+});
+
+
+test('股_V0.6.6.1 月檔可新增日期，不會被舊快照無條件覆寫',()=>{
+ const old=[{d:'2026-11-18',o:100,h:100,l:100,c:100}];
+ const fresh=[{d:'2026-11-17',c:99,o:null,h:null,l:null,priceBasis:'close'},{d:'2026-11-18',c:101,o:null,h:null,l:null,priceBasis:'close'}];
+ const merged=mergeIndexMonth(old,fresh);
+ assert.equal(merged.length,2);assert.equal(merged[1].c,101);assert.equal(merged[1].h,null);
+});
+test('股_V0.6.6.1 真實 OHLC 快照比收盤月資料資訊完整，應保留高低',()=>{
+ const merged=mergeIndexMonth([{d:'2026-11-18',o:100,h:105,l:98,c:102,priceBasis:'highlow'}],[{d:'2026-11-18',c:102,o:null,h:null,l:null,priceBasis:'close'}]);
+ assert.equal(merged[0].h,105);assert.equal(merged[0].l,98);
+});
+test('股_V0.6.6.1 OTC 月份資料容許欄位換順序，但仍檢查有效高低收',()=>{
+ const r=parseTpexIndexMonth({stat:'ok',tables:[{fields:['收市','最低','日期','最高','開市','漲/跌'],data:[['307.55','299','2026/11/18','310','301','+3']]}]},'2026-11');
+ assert.equal(r.length,1);assert.equal(r[0].c,307.55);
 });
