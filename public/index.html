@@ -2,15 +2,15 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d1523"><meta name="description" content="台股多空智慧篩股｜官方盤後資料、MA240、型態及籌碼觀察">
 <link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="manifest" href="./manifest.webmanifest">
-<title>股_V0.6.8.2｜台股雙向雷達</title><link rel="stylesheet" href="./styles.css?v=0682">
+<title>股_V0.7.0 預覽｜台股雙向雷達</title><link rel="stylesheet" href="./styles.css?v=070p1">
 </head><body>
 <div class="shell">
   <header class="topbar">
-    <div class="brand"><span class="brand-icon">↗↘</span><div><div class="brand-title">台股雙向雷達 <span class="version">股_V0.6.8.2</span></div><div class="brand-sub">多空策略 · 型態偵測 · 籌碼觀察</div></div></div>
+    <div class="brand"><span class="brand-icon">↗↘</span><div><div class="brand-title">台股雙向雷達 <span class="version">股_V0.7.0 預覽</span></div><div class="brand-sub">多空策略 · 型態偵測 · 籌碼觀察</div></div></div>
     <div class="top-right"><span id="mode" class="pill neutral">讀取中</span><button id="reload" class="tiny-btn" title="重新讀取雲端已產生的資料">↻ 更新畫面</button></div>
   </header>
   <div class="notice" id="notice" role="status">準備載入盤後資料……</div>
-  <nav class="nav" aria-label="主功能"><button data-tab="ranking" class="active">多空排行</button><button data-tab="morning">07:00 交易計畫</button><button data-tab="flow">法人／主力觀察排行</button><button data-tab="detail">個股查詢</button><button data-tab="macro">大盤／斐波／融資券</button><button data-tab="intraday">盤中觀察</button><button data-tab="source">資料與說明</button></nav>
+  <nav class="nav" aria-label="主功能"><button data-tab="ranking" class="active">多空排行</button><button data-tab="morning">07:00 交易計畫</button><button data-tab="flow">法人／主力觀察排行</button><button data-tab="detail">個股查詢</button><button data-tab="macro">大盤／斐波／融資券</button><button data-tab="futures">期貨／富台指 <span class="nav-new">NEW</span></button><button data-tab="intraday">盤中觀察</button><button data-tab="source">資料與說明</button></nav>
   <main>
     <section id="page-ranking" class="page">
       <div class="hero"><div><span class="eyebrow">TW STOCK SCREENER</span><h1>找出下一個交易日<br>值得觀察的多空候選</h1><p>依日線量價、可用年線、MACD、RSI、KD、W／M／V 及圓弧等型態排序。這是研究篩選，不保證漲跌。</p></div><div class="hero-graphic"><div class="pulse"></div><div class="graphline">⌁</div><div class="graph-note">多空雙向追蹤</div></div></div>
@@ -56,9 +56,22 @@
       <div id="macro-content"><div class="empty">正在載入大盤資料…</div></div>
       <p class="warn">提示：台指期有近月換月及日夜盤歸屬問題，不能直接把不同月份接成未調整的連續期貨 K 線。官方融資融券為盤後統計，若回傳未標示交易日，會註明日期錨定待核。</p>
     </div></section>
+    <section id="page-futures" class="page hidden">
+      <div class="panel futures-panel">
+        <div class="panel-head"><div><span class="eyebrow">GLOBAL FUTURES · V0.7 PREVIEW</span><h2>台指期 × 富台指｜期貨監控</h2><p>公開版先呈現可核實的官方台指期盤後資料及合法行情來源入口。即時／延遲報價需取得公開揭示授權才接入。</p></div><span class="pill warning">V0.7 公開預覽 · 非即時串流</span></div>
+        <div class="futures-status-row"><span class="pill neutral" id="futures-status">盤後行情載入中</span><span id="futures-last-built" class="small muted">更新狀態：尚未讀取</span></div>
+        <div id="futures-cards" class="futures-cards"><div class="empty">正在讀取已發布的期貨資料……</div></div>
+        <div class="futures-help">
+          <div><h3>富台指目前怎麼看？</h3><p>選「開啟玩股網延遲行情」可在來源網站查看 STWN&amp;。該站標示約延遲 15 分鐘，行情由來源站自行更新；本 APP 不轉抓、不儲存或轉播報價。</p></div>
+          <div><h3>公開版資料規範</h3><p>台灣 TX、MTX 與 SGX TWN、MTWN 必須分別保留合約月份、交易時段、時間戳記。若來源尚未授權，顯示「尚未接入」，不補零也不冒稱即時。</p></div>
+        </div>
+        <div class="futures-actions"><button class="outline-btn" id="futures-reload">↻ 重讀中央資料</button><a class="futures-link" href="https://www.wantgoo.com/global/stwn%26" target="_blank" rel="noopener noreferrer">開啟玩股網富台指（延遲） ↗</a><a class="futures-link quiet" href="https://www.sgx.com/derivatives/products/twnfc?cc=CTWN" target="_blank" rel="noopener noreferrer">查看 SGX 富台指商品資料 ↗</a></div>
+        <p class="warn">注意：來源網站顯示免費並不代表第三方可以再散播行情。這一版尚未啟用富台指內嵌報價或秒級突破提醒；真正串流需另行確認揭示授權與 API。</p>
+      </div>
+    </section>
     <section id="page-intraday" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>盤中觀察站</h2><p>預留合法授權的 1～5 分鐘行情接入，不顯示假即時訊號。</p></div><span class="pill warning">盤中資料未接入</span></div><div class="intraday-grid"><div class="info-tile"><h3>可立即使用</h3><p>查看上一交易日的多空候選、MA240、支撐壓力研究線索；點選股票切到個股頁。資料以實際日期標示。</p></div><div class="info-tile"><h3>待行情授權後啟用</h3><p>每 1～5 分鐘掃描量能、當日高低價突破、5／15／30 分 K、盤中強弱分數和提醒。</p></div></div><p class="callout">注意：即使只是免費提供給親友，也不代表能將個人的券商即時報價透過網站轉供他人。此版不串接私人證券帳戶或交易 API。</p><button class="outline-btn" id="intraday-ranking">查看盤後多空候選</button></div></section>
     <section id="page-source" class="page hidden"><div class="panel"><div class="panel-head"><div><h2>資料來源與同步狀況</h2><p>查看最近一筆官方資料日期，不把網頁刷新時間當成行情時間。</p></div></div><div id="source-content"></div><h3>篩股定義</h3><ul class="rules"><li>日線趨勢依 MA5／10／20／60／120／240、MACD、RSI、KD、量比和型態候選評分。</li><li>同時提供多頭與空頭方向，分數不是上漲／下跌機率，也不是買賣指令。</li><li>W、M、V、圓弧等屬規則式候選型態，需人工確認頸線、量能、除權息與圖形失效條件。</li><li>法人最新與歷史資料分開回補，法人 10／20／30／60 日排名至少要有 80% 日數涵蓋且法人最新資料不超過 2 個交易日；個股籌碼亦依實際覆蓋率顯示；淨買超日的加權收盤參考價並非成交價或持倉成本；主力分點目前未接入。</li><li>公式以未還原日線為主，遇除權息可能失真；歷史 60～249 日只列「短期初步觀察」，並排除 MA240 年線條件；≥250 日才列完整年線分析。兩種分數計算不同，不可直接比較。</li><li>台股加權、OTC、期貨與融資券來自各自官方公開盤後接口；若格式無法核對，顯示資料不足。</li><li>斐波回撤與延伸是歷史波段的數學價位，不保證轉折或到價；資料歷史不足、斐波極值不可靠時不顯示。</li><li>盤中即時資料尚未接入；畫面更新並不代表行情每分鐘更新。</li></ul><button class="outline-btn" id="demo-toggle">切換示範資料</button><p class="small muted">示範資料是人造測試數據，僅用來確認 UI／規則，不代表真實股票。</p></div></section>
   </main>
-  <footer>股_V0.6.8.2 · 親友免費共享原型 · 僅供資訊研究 · 請確認資料日期與來源</footer>
+  <footer>股_V0.7.0 預覽 · 公開行情介面 · 僅供資訊研究 · 請確認資料日期與來源</footer>
 </div>
-<script src="./data/demo.js"></script><script src="./app.js?v=0682"></script><script src="./morning.js?v=0682"></script></body></html>
+<script src="./data/demo.js"></script><script src="./app.js?v=070p1"></script><script src="./futures.js?v=070p1"></script><script src="./morning.js?v=0682"></script></body></html>
