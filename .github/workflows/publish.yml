@@ -54,8 +54,8 @@ jobs:
       - name: 向官方取數、更新中央歷史
         if: github.event.schedule != '0 23 * * 0-4'
         env:
-          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '0' }}
-          CHIP_DAYS: ${{ github.event.inputs.chip_days || '0' }}
+          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || (github.event_name == 'schedule' && (github.event.schedule == '30 13 * * 1-5' || github.event.schedule == '0 16 * * 1-5') && '8' || '0') }}
+          CHIP_DAYS: ${{ github.event.inputs.chip_days || (github.event_name == 'schedule' && github.event.schedule == '0 16 * * 1-5' && '2' || '0') }}
         run: node scripts/update.mjs --backfill-days="$BACKFILL_DAYS" --chip-days="$CHIP_DAYS"
       - name: 台北07:00 以中央歷史庫重新產生盤前推薦
         if: github.event.schedule == '0 23 * * 0-4'
