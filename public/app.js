@@ -8,13 +8,13 @@ const netLots=x=>Number.isFinite(x)?(x>0?'+':'')+fmt(x/1000,0)+' 張':'—';
 const tint=n=>Number(n)>0?'pos':Number(n)<0?'neg':'';
 const dateTime=x=>{if(!x)return'尚未更新';let d=new Date(x);return Number.isNaN(d.valueOf())?'未知':d.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})};
 function toast(msg,isBad=false){$('notice').className='notice'+(isBad?' bad':'');$('notice').textContent=msg;}
-function switchTab(tab){state.tab=tab;Q('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));Q('.page').forEach(x=>x.classList.toggle('hidden',x.id!=='page-'+tab));if(tab==='source')renderSource();if(tab==='macro')renderMacro();if(tab==='flow')renderFlow();}
+function switchTab(tab){state.tab=tab;Q('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));Q('.page').forEach(x=>x.classList.toggle('hidden',x.id!=='page-'+tab));if(tab==='source')renderSource();if(tab==='macro')renderMacro();if(tab==='flow')renderFlow();if(tab==='futures')window.ChunpoFutures?.render(state.data);}
 function setData(data,usingDemo=false){state.data=data;state.usingDemo=usingDemo;
   let mode=$('mode');mode.className='pill '+(usingDemo?'demo':data?.mode==='official'?'ok':'neutral');mode.textContent=usingDemo?'人造示範資料':data?.mode==='official'?'官方盤後資料':'尚無正式資料';
   if(usingDemo)toast('目前顯示人造示範股價，僅供測試篩選介面；不是台股真實行情，更不是盤中即時資料。');
   else if(data?.mode==='official')toast('官方盤後行情：按各市場資料日期顯示；最後重新產生：'+dateTime(data.generatedAt)+'。不是即時價格。');
   else toast('尚未完成中央行情同步。需要站長先啟用排程並建立歷史；可在「資料與說明」切換示範。',true);
-  renderStats();renderTable();if(state.tab==='source')renderSource();if(state.tab==='macro')renderMacro();if(state.tab==='flow')renderFlow();
+  renderStats();renderTable();if(state.tab==='source')renderSource();if(state.tab==='macro')renderMacro();if(state.tab==='flow')renderFlow();if(state.tab==='futures')window.ChunpoFutures?.render(data);
 }
 function renderStats(){let d=state.data||{},r=d.rows||[],ready=r.filter(x=>x.ready),eligible=r.filter(x=>['full','preliminary'].includes(x.scoreMode)&&x.date===(d.markets?.[x.market]?.date||x.date)),bull=eligible.filter(x=>(x.bull||0)>=45),bear=eligible.filter(x=>(x.bear||0)>=45);const dates=[...new Set(r.map(x=>x.date).filter(Boolean))].sort().reverse();
 const boxes=[['最新資料日',dates[0]||'—',state.usingDemo?'示範日期':'各市場可能有不同交易日'],['追蹤普通股',num(r.length),state.usingDemo?'非實際上市櫃股數':'來源：公開盤後行情'],['年線已建立',num(ready.length),`歷史最多 ${d.stats?.maxHistoryDays||0} 日；完整度 ${r.length?Math.round(ready.length/r.length*100):0}%`],['多／空候選',bull.length+' / '+bear.length,'基準45分，含短期初步；非勝率']];
@@ -159,6 +159,7 @@ for(const id of ['search','market','pattern','yearline','minscore','dataLevel'])
 $('reload').addEventListener('click',load);$('csv').addEventListener('click',exportCsv);
 $('detail-go').addEventListener('click',()=>detail($('detail-query').value.trim()));$('detail-query').addEventListener('keydown',e=>{if(e.key==='Enter')detail(e.target.value.trim())});
 $('intraday-ranking').addEventListener('click',()=>switchTab('ranking'));
+$('futures-reload').addEventListener('click',load);
 $('macro-window').addEventListener('change',renderMacro);
 for(const id of ['flow-window','flow-direction'])$(id).addEventListener('change',renderFlow);
 $('demo-toggle').addEventListener('click',()=>{if(state.usingDemo){if(state.official)setData(state.official,false);else load()}else setData(window.__DEMO__,true);renderSource()});
