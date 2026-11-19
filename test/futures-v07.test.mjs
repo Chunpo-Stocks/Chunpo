@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const load=path=>readFile(new URL('../'+path,import.meta.url),'utf8');
+test('V0.7 futures screen visible and source-aware; EOD functionality still intact',async()=>{
+ const html=await load('public/index.html'),script=await load('public/app.js'),futures=await load('public/futures.js');
+ assert.match(html,/data-tab="futures"/);
+ assert.match(html,/id="page-futures"/);
+ assert.match(html,/stwn%26/);
+ assert.match(script,/if\(tab==='futures'\)/);
+ assert.match(futures,/window\.ChunpoFutures/);
+ assert.match(futures,/官方盤後/);
+ assert.match(futures,/15 分鐘/);
+ assert.match(futures,/APP 內報價：未授權接入/);
+ assert.doesNotMatch(futures,/fetch\(/);
+ assert.doesNotMatch(futures,/WebSocket\(/);
+ assert.match(html,/data-tab="ranking"/);
+ assert.match(html,/data-tab="morning"/);
+ assert.match(html,/data-tab="macro"/);
+});
