@@ -21,3 +21,27 @@
 #page-morning td small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 #page-morning td .muted{font-size:11px;line-height:1.45;margin-top:4px;max-width:250px}
 @media(max-width:640px){.morning-options{display:grid;gap:10px}.morning-options fieldset{min-width:0}}
+
+/* V0.7.0-preview: public, source-aware futures board (no unauthorized quote relay). */
+.nav-new{background:#244d50;border:1px solid #3f8c92;color:#a4fcf2;border-radius:5px;font-size:9px;padding:1px 4px;margin-left:3px;font-weight:800;vertical-align:middle}
+.futures-panel{border-color:#34546e;background:linear-gradient(140deg,#13283d 0%,#101f31 68%,#0e1929 100%)}
+.futures-panel .panel-head{margin-bottom:15px}
+.futures-status-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.futures-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.future-tile{background:#0d1d30;border:1px solid #2a4660;border-radius:14px;padding:17px;min-width:0}
+.future-tile.primary{border-color:#317e89;box-shadow:inset 0 0 0 1px #26606d}
+.future-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.future-tile h3{font-size:16px;margin:0}
+.future-symbol{font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
+.future-tile .pill{font-size:10px;white-space:normal;text-align:right}
+.future-value{font-size:29px;letter-spacing:-.02em;font-weight:850;line-height:1.4;margin:16px 0 2px;font-variant-numeric:tabular-nums}
+.future-sub{font-size:12px;color:#b4c9dc;margin:5px 0}
+.future-metadata{border-top:1px solid #2b4156;margin-top:14px;padding-top:10px;font-size:12px;color:#9eb7cb;line-height:1.8}
+.futures-help{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:19px 0}
+.futures-help>div{background:#182d41;border-radius:12px;padding:16px;border:1px solid #304a60}
+.futures-help h3{font-size:15px;margin:0 0 6px}.futures-help p{margin:0;color:#b5cbdc;font-size:12px;line-height:1.85}
+.futures-actions{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:13px;align-items:center}
+.futures-link{display:inline-flex;align-items:center;text-decoration:none;border-radius:9px;border:1px solid #40858a;background:#163d46;color:#bdffff;padding:9px 13px;font-size:13px}
+.futures-link:hover{background:#1c535b}.futures-link.quiet{border-color:#38556e;background:transparent;color:#b9d7ed}
+@media(max-width:1050px){.futures-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.futures-cards{grid-template-columns:1fr 1fr;gap:8px}.future-tile{padding:12px}.future-tile h3{font-size:14px}.future-value{font-size:24px;margin:10px 0}.future-top{flex-direction:column;gap:5px}.futures-help{grid-template-columns:1fr}.futures-link{font-size:12px}}
