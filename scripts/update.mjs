@@ -2,7 +2,7 @@
 import {loadStore,saveStore,addBar,addInstitution,buildOutput} from './build.mjs';
 import {SOURCES,parseTwseLatest,parseTpexLatest,parseTwseInst,parseTpexInst,parseTpexInstHistory,isoDate} from '../engine.mjs';
 import {inspectHistory,classifyHistoryPair,isVerifiedClosure} from './history-policy.mjs';
-import {chooseTwseFallbackDate,validateTwseDaily} from './twse-fallback.mjs';
+import {chooseTwseFallbackDate,validateTwseDaily,validateTpexDaily} from './twse-fallback.mjs';
 import {planChipBackfill,recordChipResult} from './chip-planner.mjs';
 import {parseTwseMarginDaily} from './margin-daily.mjs';
 import {quarantineUndatedTwseMargin,invalidateLegacyTwseDealer,listedDealerPendingDates} from './data-quality.mjs';
@@ -52,8 +52,9 @@ for(const market of ['上市','上櫃']){
   }catch(e){errors.push(market+'最新行情：'+e.message);store.markets[market]={...(store.markets[market]||{}),status:'error',error:e.message,checkedAt:new Date().toISOString()};console.error(errors.at(-1));}
   await nap(900);
 }
-// 若上市 OpenAPI 快照落後於櫃買已確認交易日，使用證交所指定日期資料保守補抓。
-const fallbackDate=chooseTwseFallbackDate(store.markets,todayTaipei());
+// 上市 OpenAPI 落後時，盤後可獨立嘗試指定日期報表；最終須經官方日期及有效股票數驗證。
+const taipeiClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
+const fallbackDate=chooseTwseFallbackDate(store.markets,todayTaipei(),{afterClose:taipeiClock>='15:30'});
 if(fallbackDate){
  try{
   const staleTwseDate=store.markets['上市']?.date||null;
@@ -79,6 +80,34 @@ if(fallbackDate){
   }
  }catch(e){
   const message='上市 '+fallbackDate+' 日期指定行情補抓未通過：'+e.message;
+  errors.push(message);console.warn('::warning::'+message);
+ }
+}
+// 上櫃最新 OpenAPI 若逾時或落後，使用上市已確認交易日嘗試上櫃日期指定官方盤後。
+const confirmedTwseDate=store.markets['上市']?.date||null;
+const staleTpexDate=store.markets['上櫃']?.date||null;
+if(confirmedTwseDate&&(!staleTpexDate||confirmedTwseDate>staleTpexDate)){
+ try{
+  const fallbackUrl=SOURCES.tpexHistory.replace('{yyyy}',confirmedTwseDate.slice(0,4)).replace('{mm}',confirmedTwseDate.slice(5,7)).replace('{dd}',confirmedTwseDate.slice(8,10));
+  const rows=validateTpexDaily(await json(fallbackUrl,{tries:2}),confirmedTwseDate);
+  for(const b of rows)addBar(store,b);
+  store.markets['上櫃']={date:confirmedTwseDate,count:rows.length,status:'ok',source:fallbackUrl,checkedAt:new Date().toISOString(),retrieval:'日期指定官方盤後補抓'};
+  changed=true;
+  console.log('上櫃 日期指定補抓成功',confirmedTwseDate,rows.length,'檔；原快照日期',staleTpexDate);
+  try{
+   const instUrl=SOURCES.tpexInstHistory.replace('{date}',`${Number(confirmedTwseDate.slice(0,4))-1911}%2F${confirmedTwseDate.slice(5,7)}%2F${confirmedTwseDate.slice(8,10)}`);
+   const inst=parseTpexInstHistory(await json(instUrl,{tries:2}),confirmedTwseDate);
+   if(inst.length<50)throw Error('有效法人筆數不足：'+inst.length);
+   for(const row of inst)addInstitution(store,row);
+   store.markets['上櫃'].institutionDate=confirmedTwseDate;
+   console.log('上櫃 日期指定法人',confirmedTwseDate,inst.length);
+  }catch(e){
+   const message='上櫃 '+confirmedTwseDate+' 法人日期指定補抓失敗：'+e.message;
+   errors.push(message);console.warn('::warning::'+message);
+   delete store.markets['上櫃'].institutionDate;
+  }
+ }catch(e){
+  const message='上櫃 '+confirmedTwseDate+' 日期指定行情補抓未通過：'+e.message;
   errors.push(message);console.warn('::warning::'+message);
  }
 }
